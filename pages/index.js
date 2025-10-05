@@ -158,9 +158,9 @@ export default function Home() {
 
   // Size classes (1=small, 2=medium, 3=large)
   const sizeMap = {
-    1: { container: 'text-2xl', emote: 'max-h-[25px]' },
-    2: { container: 'text-4xl', emote: 'max-h-[42px]' },
-    3: { container: 'text-5xl', emote: 'max-h-[60px]' }
+    1: { container: 'text-2xl', emote: 'max-h-[25px]', badge: 18 },
+    2: { container: 'text-4xl', emote: 'max-h-[42px]', badge: 28 },
+    3: { container: 'text-5xl', emote: 'max-h-[60px]', badge: 36 }
   };
 
   // Font families (0-11 + custom)
@@ -214,51 +214,47 @@ export default function Home() {
       <Head><title>Kick Chat Overlay - {settings.channel}</title></Head>
       <div className="min-h-screen w-full">
         <div 
-          className={`absolute bottom-0 left-0 w-full overflow-hidden ${currentSize.container} text-white font-extrabold leading-relaxed`}
+          className={`absolute bottom-0 left-0 w-full overflow-hidden ${currentSize.container} text-white font-extrabold`}
           style={containerStyle}
         >
           {messages.map((msg, index) => (
             <AnimatedMessage key={msg.id} animate={settings.animation === 'slide' && index === messages.length - 1}>
-              <div className="m-1 flex items-center">
+              <div className="m-1">
                 {msg.badges?.length > 0 && (
-                  <span className="inline-flex items-center space-x-1 mr-2">
+                  <span className="inline-flex pr-1 space-x-1 flex-shrink-0">
                     {msg.badges.map((badge, i) => (
                       <img 
                         key={i} 
                         src={badge.url} 
                         alt="badge"
-                        className="inline-block"
-                        style={{ 
-                          height: '1.5em',
-                          width: 'auto'
-                        }}
+                        width={72}
+                        height={72}
+                        style={{ display: 'inline-block' }}
                       />
                     ))}
                   </span>
                 )}
-                <span className="flex items-baseline flex-wrap">
-                  {!settings.hideNames && (
-                    <>
-                      <span style={{ color: msg.color }}>
-                        {msg.username}
-                      </span>
-                      <span>: </span>
-                    </>
+                {!settings.hideNames && (
+                  <>
+                    <span style={{ color: msg.color }}>
+                      {msg.username}
+                    </span>
+                    <span>: </span>
+                  </>
+                )}
+                <span className="break-words">
+                  {msg.messageParts.map((part, i) => 
+                    part.type === 'emote' ? (
+                      <img 
+                        key={i}
+                        src={part.url}
+                        alt={part.name}
+                        className={`inline-flex ${currentSize.emote} h-auto w-auto pr-1`}
+                      />
+                    ) : (
+                      <span key={i}>{part.content}</span>
+                    )
                   )}
-                  <span className="break-words">
-                    {msg.messageParts.map((part, i) => 
-                      part.type === 'emote' ? (
-                        <img 
-                          key={i}
-                          src={part.url}
-                          alt={part.name}
-                          className={`inline-flex ${currentSize.emote} h-auto w-auto pr-1`}
-                        />
-                      ) : (
-                        <span key={i}>{part.content}</span>
-                      )
-                    )}
-                  </span>
                 </span>
               </div>
             </AnimatedMessage>

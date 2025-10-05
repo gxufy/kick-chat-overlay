@@ -219,42 +219,46 @@ export default function Home() {
         >
           {messages.map((msg, index) => (
             <AnimatedMessage key={msg.id} animate={settings.animation === 'slide' && index === messages.length - 1}>
-              <div className="m-1">
+              <div className="m-1 flex items-center">
                 {msg.badges?.length > 0 && (
-                  <span className="inline-flex pr-1 space-x-1 flex-shrink-0">
+                  <span className="inline-flex items-center space-x-1 mr-2">
                     {msg.badges.map((badge, i) => (
                       <img 
                         key={i} 
                         src={badge.url} 
                         alt="badge"
-                        width={currentSize.badge}
-                        height={currentSize.badge}
-                        style={{ display: 'inline-block' }}
+                        className="inline-block"
+                        style={{ 
+                          height: '1.5em',
+                          width: 'auto'
+                        }}
                       />
                     ))}
                   </span>
                 )}
-                {!settings.hideNames && (
-                  <>
-                    <span style={{ color: msg.color }}>
-                      {msg.username}
-                    </span>
-                    <span>: </span>
-                  </>
-                )}
-                <span className="break-words">
-                  {msg.messageParts.map((part, i) => 
-                    part.type === 'emote' ? (
-                      <img 
-                        key={i}
-                        src={part.url}
-                        alt={part.name}
-                        className={`inline-flex ${currentSize.emote} h-auto w-auto pr-1`}
-                      />
-                    ) : (
-                      <span key={i}>{part.content}</span>
-                    )
+                <span className="flex items-baseline flex-wrap">
+                  {!settings.hideNames && (
+                    <>
+                      <span style={{ color: msg.color }}>
+                        {msg.username}
+                      </span>
+                      <span>: </span>
+                    </>
                   )}
+                  <span className="break-words">
+                    {msg.messageParts.map((part, i) => 
+                      part.type === 'emote' ? (
+                        <img 
+                          key={i}
+                          src={part.url}
+                          alt={part.name}
+                          className={`inline-flex ${currentSize.emote} h-auto w-auto pr-1`}
+                        />
+                      ) : (
+                        <span key={i}>{part.content}</span>
+                      )
+                    )}
+                  </span>
                 </span>
               </div>
             </AnimatedMessage>

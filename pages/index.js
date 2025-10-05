@@ -158,9 +158,9 @@ export default function Home() {
 
   // Size classes (1=small, 2=medium, 3=large)
   const sizeMap = {
-    1: { container: 'text-2xl', emote: 'max-h-[25px]' },
-    2: { container: 'text-4xl', emote: 'max-h-[42px]' },
-    3: { container: 'text-5xl', emote: 'max-h-[60px]' }
+    1: { container: 'text-2xl', emote: 'max-h-[25px]', badge: 18 },
+    2: { container: 'text-4xl', emote: 'max-h-[42px]', badge: 28 },
+    3: { container: 'text-5xl', emote: 'max-h-[60px]', badge: 36 }
   };
 
   // Font families (0-11 + custom)
@@ -214,7 +214,7 @@ export default function Home() {
       <Head><title>Kick Chat Overlay - {settings.channel}</title></Head>
       <div className="min-h-screen w-full">
         <div 
-          className={`absolute bottom-0 left-0 w-full overflow-hidden ${currentSize.container} text-white font-extrabold`}
+          className={`absolute bottom-0 left-0 w-full overflow-hidden ${currentSize.container} text-white font-extrabold leading-relaxed`}
           style={containerStyle}
         >
           {messages.map((msg, index) => (
@@ -227,8 +227,8 @@ export default function Home() {
                         key={i} 
                         src={badge.url} 
                         alt="badge"
-                        width={72}
-                        height={72}
+                        width={currentSize.badge}
+                        height={currentSize.badge}
                         style={{ display: 'inline-block' }}
                       />
                     ))}

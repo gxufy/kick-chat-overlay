@@ -67,50 +67,16 @@ export default function Home() {
         const channel = pusher.subscribe(`chatrooms.${data.chatroom.id}.v2`);
         
         channel.bind('App\\Events\\ChatMessageEvent', (chatData) => {
+          console.log('Message received:', chatData); // Debug log
+          
           const badges = [];
           
-          if (chatData.sender.identity.badges) {
+          // Check if badges exist and process them
+          if (chatData.sender?.identity?.badges && Array.isArray(chatData.sender.identity.badges)) {
             chatData.sender.identity.badges.forEach(badge => {
-              let badgeUrl = null;
-              
-              switch(badge.type) {
-                case 'broadcaster':
-                  badgeUrl = 'https://kick.com/images/badges/broadcaster.svg';
-                  break;
-                case 'moderator':
-                  badgeUrl = 'https://kick.com/images/badges/moderator.svg';
-                  break;
-                case 'vip':
-                  badgeUrl = 'https://kick.com/images/badges/vip.svg';
-                  break;
-                case 'verified':
-                  badgeUrl = 'https://kick.com/images/badges/verified.svg';
-                  break;
-                case 'staff':
-                  badgeUrl = 'https://kick.com/images/badges/staff.svg';
-                  break;
-                case 'founder':
-                  badgeUrl = 'https://kick.com/images/badges/founder.svg';
-                  break;
-                case 'og':
-                  badgeUrl = 'https://kick.com/images/badges/og.svg';
-                  break;
-                case 'subscriber':
-                  // Find the correct subscriber badge based on months
-                  if (data.subscriber_badges && data.subscriber_badges.length > 0) {
-                    const subBadge = data.subscriber_badges
-                      .filter(b => b.months <= badge.count)
-                      .sort((a, b) => b.months - a.months)[0];
-                    badgeUrl = subBadge?.badge_image?.src;
-                  }
-                  break;
-                case 'sub_gifter':
-                  badgeUrl = 'https://kick.com/images/badges/sub-gifter.svg';
-                  break;
-              }
-              
-              if (badgeUrl) {
-                badges.push({ type: badge.type, url: badgeUrl });
+              // Badges might have image URLs directly in the badge object
+              if (badge.image_url) {
+                badges.push({ type: badge.type, url: badge.image_url });
               }
             });
           }
@@ -121,9 +87,11 @@ export default function Home() {
             color: chatData.sender.identity.color || '#999999',
             text: chatData.content,
             badges: badges,
+            badgeData: chatData.sender?.identity?.badges || [], // Store raw badge data for debugging
             timestamp: Date.now()
           };
 
+          console.log('Processed message:', newMessage); // Debug log
           setMessages(prev => [...prev.slice(-49), newMessage]);
         });
 
@@ -159,7 +127,7 @@ export default function Home() {
                         src={badge.url} 
                         alt={badge.type}
                         className="h-4 w-4"
-                        onError={(e) => { e.target.style.display = 'none'; }}
+                        onError={(e) => { console.log('Badge failed:', badge.url); e.target.style.display = 'none'; }}
                       />
                     ))}
                   </span>

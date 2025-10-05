@@ -67,16 +67,33 @@ export default function Home() {
         const channel = pusher.subscribe(`chatrooms.${data.chatroom.id}.v2`);
         
         channel.bind('App\\Events\\ChatMessageEvent', (chatData) => {
-          console.log('Message received:', chatData); // Debug log
+          const badgeElements = [];
           
-          const badges = [];
-          
-          // Check if badges exist and process them
           if (chatData.sender?.identity?.badges && Array.isArray(chatData.sender.identity.badges)) {
             chatData.sender.identity.badges.forEach(badge => {
-              // Badges might have image URLs directly in the badge object
-              if (badge.image_url) {
-                badges.push({ type: badge.type, url: badge.image_url });
+              if (badge.type === 'subscriber') {
+                // Use subscriber badge from channel data
+                if (data.subscriber_badges && data.subscriber_badges.length > 0) {
+                  const matchingBadges = data.subscriber_badges
+                    .filter(b => badge.count >= b.months)
+                    .sort((a, b) => b.months - a.months);
+                  
+                  if (matchingBadges.length > 0 && matchingBadges[0].badge_image?.src) {
+                    badgeElements.push({ url: matchingBadges[0].badge_image.src });
+                  }
+                }
+              } else if (badge.type === 'sub_gifter') {
+                // Sub gifter badges based on count
+                let gifterBadge = 'subGifter';
+                if (badge.count >= 200) gifterBadge = 'subGifter200';
+                else if (badge.count >= 100) gifterBadge = 'subGifter100';
+                else if (badge.count >= 50) gifterBadge = 'subGifter50';
+                else if (badge.count >= 25) gifterBadge = 'subGifter25';
+                
+                badgeElements.push({ url: `/_next/static/media/${gifterBadge}.svg` });
+              } else {
+                // Standard badges
+                badgeElements.push({ url: `/_next/static/media/${badge.type}.svg` });
               }
             });
           }
@@ -86,12 +103,10 @@ export default function Home() {
             username: chatData.sender.username,
             color: chatData.sender.identity.color || '#999999',
             text: chatData.content,
-            badges: badges,
-            badgeData: chatData.sender?.identity?.badges || [], // Store raw badge data for debugging
+            badges: badgeElements,
             timestamp: Date.now()
           };
 
-          console.log('Processed message:', newMessage); // Debug log
           setMessages(prev => [...prev.slice(-49), newMessage]);
         });
 
@@ -118,16 +133,17 @@ export default function Home() {
         <div className={`absolute bottom-0 left-0 w-full overflow-hidden ${sizeClasses[settings.textSize]} text-white`}>
           {messages.map((msg, index) => (
             <AnimatedMessage key={msg.id} animate={settings.animation === 'slide' && index === messages.length - 1}>
-              <div className="m-1 flex items-center gap-1">
+              <div className="m-1">
                 {msg.badges?.length > 0 && (
-                  <span className="inline-flex space-x-1 flex-shrink-0">
+                  <span className="inline-flex pr-1 space-x-1 flex-shrink-0">
                     {msg.badges.map((badge, i) => (
                       <img 
                         key={i} 
                         src={badge.url} 
-                        alt={badge.type}
-                        className="h-4 w-4"
-                        onError={(e) => { console.log('Badge failed:', badge.url); e.target.style.display = 'none'; }}
+                        alt="badge"
+                        width={16}
+                        height={16}
+                        style={{ display: 'inline-block' }}
                       />
                     ))}
                   </span>
@@ -135,7 +151,7 @@ export default function Home() {
                 <span className={`font-bold ${shadowClasses[settings.textShadow]}`} style={{ color: msg.color }}>
                   {msg.username}
                 </span>
-                <span className={shadowClasses[settings.textShadow]}>:</span>
+                <span className={shadowClasses[settings.textShadow]}>: </span>
                 <span className={`break-words ${shadowClasses[settings.textShadow]}`}>
                   {msg.text}
                 </span>

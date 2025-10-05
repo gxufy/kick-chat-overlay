@@ -158,9 +158,9 @@ export default function Home() {
 
   // Size classes (1=small, 2=medium, 3=large)
   const sizeMap = {
-    1: { container: 'text-sm', emote: 'max-h-5' },
-    2: { container: 'text-base', emote: 'max-h-6' },
-    3: { container: 'text-lg', emote: 'max-h-7' }
+    1: { container: 'text-2xl', emote: 'max-h-[25px]' },
+    2: { container: 'text-4xl', emote: 'max-h-[42px]' },
+    3: { container: 'text-5xl', emote: 'max-h-[60px]' }
   };
 
   // Font families (0-11 + custom)
@@ -214,7 +214,7 @@ export default function Home() {
       <Head><title>Kick Chat Overlay - {settings.channel}</title></Head>
       <div className="min-h-screen w-full">
         <div 
-          className={`absolute bottom-0 left-0 w-full overflow-hidden ${currentSize.container} text-white`}
+          className={`absolute bottom-0 left-0 w-full overflow-hidden ${currentSize.container} text-white font-extrabold`}
           style={containerStyle}
         >
           {messages.map((msg, index) => (
@@ -236,7 +236,7 @@ export default function Home() {
                 )}
                 {!settings.hideNames && (
                   <>
-                    <span className="font-bold" style={{ color: msg.color }}>
+                    <span style={{ color: msg.color }}>
                       {msg.username}
                     </span>
                     <span>: </span>

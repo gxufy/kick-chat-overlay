@@ -33,7 +33,6 @@ function AnimatedMessage({ children, animate }) {
   return <>{children}</>;
 }
 
-// Parse message and replace emotes
 function parseMessage(text) {
   const emoteRegex = /\[emote:(\d+):([^\]]+)\]/g;
   const parts = [];
@@ -41,23 +40,18 @@ function parseMessage(text) {
   let match;
 
   while ((match = emoteRegex.exec(text)) !== null) {
-    // Add text before emote
     if (match.index > lastIndex) {
       parts.push({ type: 'text', content: text.slice(lastIndex, match.index) });
     }
-    
-    // Add emote
     parts.push({
       type: 'emote',
       id: match[1],
       name: match[2],
       url: `https://files.kick.com/emotes/${match[1]}/fullsize`
     });
-    
     lastIndex = match.index + match[0].length;
   }
   
-  // Add remaining text
   if (lastIndex < text.length) {
     parts.push({ type: 'text', content: text.slice(lastIndex) });
   }
@@ -71,9 +65,14 @@ export default function Home() {
   const [channelData, setChannelData] = useState(null);
   const [settings, setSettings] = useState({ 
     channel: 'xqc',
-    animation: 'slide', 
-    textSize: 'medium', 
-    textShadow: 'small' 
+    animation: 'slide',
+    size: 3,
+    font: 0,
+    fontCustom: '',
+    stroke: 0,
+    shadow: 0,
+    smallCaps: false,
+    hideNames: false
   });
 
   useEffect(() => {
@@ -81,8 +80,13 @@ export default function Home() {
     setSettings({
       channel: router.query.channel || 'xqc',
       animation: router.query.animation || 'slide',
-      textSize: router.query.textSize || 'medium',
-      textShadow: router.query.textShadow || 'small'
+      size: parseInt(router.query.size) || 3,
+      font: parseInt(router.query.font) || 0,
+      fontCustom: router.query.fontCustom || '',
+      stroke: parseInt(router.query.stroke) || 0,
+      shadow: parseInt(router.query.shadow) || 0,
+      smallCaps: router.query.smallCaps === 'true',
+      hideNames: router.query.hideNames === 'true'
     });
   }, [router.isReady, router.query]);
 
@@ -152,14 +156,67 @@ export default function Home() {
     connectToKick();
   }, [settings.channel]);
 
-  const sizeClasses = { small: 'text-base', medium: 'text-lg', large: 'text-xl' };
-  const shadowClasses = { none: '', small: 'text-shadow-sm', medium: 'text-shadow-md', large: 'text-shadow-lg' };
+  // Size classes (1=small, 2=medium, 3=large)
+  const sizeMap = {
+    1: { container: 'text-sm', emote: 'max-h-5' },
+    2: { container: 'text-base', emote: 'max-h-6' },
+    3: { container: 'text-lg', emote: 'max-h-7' }
+  };
+
+  // Font families (0-11 + custom)
+  const fontMap = {
+    0: 'BalooTammudu',
+    1: 'ui-sans-serif, system-ui',
+    2: 'Roboto, sans-serif',
+    3: 'Lato, sans-serif',
+    4: 'Noto Sans, sans-serif',
+    5: 'Source Code Pro, monospace',
+    6: 'Impact, fantasy',
+    7: 'Comfortaa, cursive',
+    8: 'Dancing Script, cursive',
+    9: 'Indie Flower, cursive',
+    10: 'Open Sans, sans-serif',
+    11: 'AlsinaUltrajada, fantasy'
+  };
+
+  // Stroke thickness (1=thin, 2=medium, 3=thick, 4=thicker)
+  const getStrokeStyle = (thickness) => {
+    if (!thickness) return {};
+    const widths = { 1: 1, 2: 2, 3: 3, 4: 4 };
+    return {
+      paintOrder: 'stroke fill',
+      WebkitTextStroke: `${widths[thickness]}px black`
+    };
+  };
+
+  // Shadow size (1=small, 2=medium, 3=large)
+  const getShadowStyle = (size) => {
+    if (!size) return {};
+    const shadows = {
+      1: '0 1px 2px rgba(0,0,0,0.8)',
+      2: '0 2px 4px rgba(0,0,0,0.8)',
+      3: '0 3px 6px rgba(0,0,0,0.8)'
+    };
+    return { textShadow: shadows[size] };
+  };
+
+  const containerStyle = {
+    fontFamily: settings.fontCustom || fontMap[settings.font] || fontMap[0],
+    ...getStrokeStyle(settings.stroke),
+    ...getShadowStyle(settings.shadow),
+    ...(settings.smallCaps && { fontVariant: 'small-caps' })
+  };
+
+  const currentSize = sizeMap[settings.size] || sizeMap[3];
 
   return (
     <>
       <Head><title>Kick Chat Overlay - {settings.channel}</title></Head>
       <div className="min-h-screen w-full">
-        <div className={`absolute bottom-0 left-0 w-full overflow-hidden ${sizeClasses[settings.textSize]} text-white`}>
+        <div 
+          className={`absolute bottom-0 left-0 w-full overflow-hidden ${currentSize.container} text-white`}
+          style={containerStyle}
+        >
           {messages.map((msg, index) => (
             <AnimatedMessage key={msg.id} animate={settings.animation === 'slide' && index === messages.length - 1}>
               <div className="m-1">
@@ -177,18 +234,22 @@ export default function Home() {
                     ))}
                   </span>
                 )}
-                <span className={`font-bold ${shadowClasses[settings.textShadow]}`} style={{ color: msg.color }}>
-                  {msg.username}
-                </span>
-                <span className={shadowClasses[settings.textShadow]}>: </span>
-                <span className={`break-words ${shadowClasses[settings.textShadow]}`}>
+                {!settings.hideNames && (
+                  <>
+                    <span className="font-bold" style={{ color: msg.color }}>
+                      {msg.username}
+                    </span>
+                    <span>: </span>
+                  </>
+                )}
+                <span className="break-words">
                   {msg.messageParts.map((part, i) => 
                     part.type === 'emote' ? (
                       <img 
                         key={i}
                         src={part.url}
                         alt={part.name}
-                        className="inline-flex max-h-7 h-auto w-auto pr-1"
+                        className={`inline-flex ${currentSize.emote} h-auto w-auto pr-1`}
                       />
                     ) : (
                       <span key={i}>{part.content}</span>

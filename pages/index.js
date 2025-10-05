@@ -69,34 +69,31 @@ export default function Home() {
         channel.bind('App\\Events\\ChatMessageEvent', (chatData) => {
           const badgeElements = [];
           
-          if (chatData.sender?.identity?.badges && Array.isArray(chatData.sender.identity.badges)) {
-            chatData.sender.identity.badges.forEach(badge => {
-              if (badge.type === 'subscriber') {
-                // Use subscriber badge from channel data
-                if (data.subscriber_badges && data.subscriber_badges.length > 0) {
-                  const matchingBadges = data.subscriber_badges
-                    .filter(b => badge.count >= b.months)
-                    .sort((a, b) => b.months - a.months);
-                  
-                  if (matchingBadges.length > 0 && matchingBadges[0].badge_image?.src) {
-                    badgeElements.push({ url: matchingBadges[0].badge_image.src });
-                  }
-                }
-              } else if (badge.type === 'sub_gifter') {
-                // Sub gifter badges based on count
-                let gifterBadge = 'subGifter';
-                if (badge.count >= 200) gifterBadge = 'subGifter200';
-                else if (badge.count >= 100) gifterBadge = 'subGifter100';
-                else if (badge.count >= 50) gifterBadge = 'subGifter50';
-                else if (badge.count >= 25) gifterBadge = 'subGifter25';
-                
-                badgeElements.push({ url: `/_next/static/media/${gifterBadge}.svg` });
-              } else {
-                // Standard badges
-                badgeElements.push({ url: `/_next/static/media/${badge.type}.svg` });
-              }
-            });
-          }
+if (chatData.sender?.identity?.badges && Array.isArray(chatData.sender.identity.badges)) {
+  chatData.sender.identity.badges.forEach(badge => {
+    if (badge.type === 'subscriber') {
+      if (data.subscriber_badges && data.subscriber_badges.length > 0) {
+        const matchingBadges = data.subscriber_badges
+          .filter(b => badge.count >= b.months)
+          .sort((a, b) => b.months - a.months);
+        
+        if (matchingBadges.length > 0 && matchingBadges[0].badge_image?.src) {
+          badgeElements.push({ url: matchingBadges[0].badge_image.src });
+        }
+      }
+    } else if (badge.type === 'sub_gifter') {
+      let gifterBadge = 'subGifter';
+      if (badge.count >= 200) gifterBadge = 'subGifter200';
+      else if (badge.count >= 100) gifterBadge = 'subGifter100';
+      else if (badge.count >= 50) gifterBadge = 'subGifter50';
+      else if (badge.count >= 25) gifterBadge = 'subGifter25';
+      
+      badgeElements.push({ url: `/badges/${gifterBadge}.svg` });
+    } else {
+      badgeElements.push({ url: `/badges/${badge.type}.svg` });
+    }
+  });
+}
 
           const newMessage = {
             id: chatData.id,

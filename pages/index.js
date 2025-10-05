@@ -227,8 +227,8 @@ export default function Home() {
                         key={i} 
                         src={badge.url} 
                         alt="badge"
-                        width={16}
-                        height={16}
+                        width={72}
+                        height={72}
                         style={{ display: 'inline-block' }}
                       />
                     ))}

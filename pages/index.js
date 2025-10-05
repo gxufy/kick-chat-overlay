@@ -37,7 +37,6 @@ export default function Home() {
   const router = useRouter();
   const [messages, setMessages] = useState([]);
   const [channelData, setChannelData] = useState(null);
-  const [badgeMap, setBadgeMap] = useState({});
   const [settings, setSettings] = useState({ 
     channel: 'xqc',
     animation: 'slide', 
@@ -54,41 +53,6 @@ export default function Home() {
       textShadow: router.query.textShadow || 'small'
     });
   }, [router.isReady, router.query]);
-
-  // Fetch badges
-  useEffect(() => {
-    if (!channelData) return;
-    
-    async function fetchBadges() {
-      try {
-        const response = await fetch(`https://kick.com/api/v2/channels/${channelData.slug}/badges`);
-        const data = await response.json();
-        
-        const badges = {
-          broadcaster: 'https://files.kick.com/badges/broadcaster.svg',
-          moderator: 'https://files.kick.com/badges/moderator.svg',
-          vip: 'https://files.kick.com/badges/vip.svg',
-          verified: 'https://files.kick.com/badges/verified.svg',
-          staff: 'https://files.kick.com/badges/staff.svg',
-          founder: 'https://files.kick.com/badges/founder.svg',
-          og: 'https://files.kick.com/badges/og.svg',
-        };
-
-        // Add subscriber badges
-        if (channelData.subscriber_badges) {
-          channelData.subscriber_badges.forEach(badge => {
-            badges[`subscriber_${badge.months}`] = badge.badge_image.src;
-          });
-        }
-
-        setBadgeMap(badges);
-      } catch (error) {
-        console.error('Failed to fetch badges:', error);
-      }
-    }
-
-    fetchBadges();
-  }, [channelData]);
 
   useEffect(() => {
     if (!settings.channel) return;
@@ -107,16 +71,46 @@ export default function Home() {
           
           if (chatData.sender.identity.badges) {
             chatData.sender.identity.badges.forEach(badge => {
-              if (badge.type === 'subscriber') {
-                badges.push({
-                  type: 'subscriber',
-                  url: data.subscriber_badges?.find(b => b.months <= badge.count)?.badge_image.src || 'https://files.kick.com/badges/subscriber.svg'
-                });
-              } else {
-                badges.push({
-                  type: badge.type,
-                  url: `https://files.kick.com/badges/${badge.type}.svg`
-                });
+              let badgeUrl = null;
+              
+              switch(badge.type) {
+                case 'broadcaster':
+                  badgeUrl = 'https://kick.com/images/badges/broadcaster.svg';
+                  break;
+                case 'moderator':
+                  badgeUrl = 'https://kick.com/images/badges/moderator.svg';
+                  break;
+                case 'vip':
+                  badgeUrl = 'https://kick.com/images/badges/vip.svg';
+                  break;
+                case 'verified':
+                  badgeUrl = 'https://kick.com/images/badges/verified.svg';
+                  break;
+                case 'staff':
+                  badgeUrl = 'https://kick.com/images/badges/staff.svg';
+                  break;
+                case 'founder':
+                  badgeUrl = 'https://kick.com/images/badges/founder.svg';
+                  break;
+                case 'og':
+                  badgeUrl = 'https://kick.com/images/badges/og.svg';
+                  break;
+                case 'subscriber':
+                  // Find the correct subscriber badge based on months
+                  if (data.subscriber_badges && data.subscriber_badges.length > 0) {
+                    const subBadge = data.subscriber_badges
+                      .filter(b => b.months <= badge.count)
+                      .sort((a, b) => b.months - a.months)[0];
+                    badgeUrl = subBadge?.badge_image?.src;
+                  }
+                  break;
+                case 'sub_gifter':
+                  badgeUrl = 'https://kick.com/images/badges/sub-gifter.svg';
+                  break;
+              }
+              
+              if (badgeUrl) {
+                badges.push({ type: badge.type, url: badgeUrl });
               }
             });
           }
@@ -156,20 +150,24 @@ export default function Home() {
         <div className={`absolute bottom-0 left-0 w-full overflow-hidden ${sizeClasses[settings.textSize]} text-white`}>
           {messages.map((msg, index) => (
             <AnimatedMessage key={msg.id} animate={settings.animation === 'slide' && index === messages.length - 1}>
-              <div className="m-1">
-                {msg.badges?.map((badge, i) => (
-                  <img 
-                    key={i} 
-                    src={badge.url} 
-                    alt={badge.type}
-                    className="inline-block h-4 w-auto mr-1"
-                    onError={(e) => e.target.style.display = 'none'}
-                  />
-                ))}
+              <div className="m-1 flex items-center gap-1">
+                {msg.badges?.length > 0 && (
+                  <span className="inline-flex space-x-1 flex-shrink-0">
+                    {msg.badges.map((badge, i) => (
+                      <img 
+                        key={i} 
+                        src={badge.url} 
+                        alt={badge.type}
+                        className="h-4 w-4"
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
+                    ))}
+                  </span>
+                )}
                 <span className={`font-bold ${shadowClasses[settings.textShadow]}`} style={{ color: msg.color }}>
                   {msg.username}
                 </span>
-                <span className={shadowClasses[settings.textShadow]}>: </span>
+                <span className={shadowClasses[settings.textShadow]}>:</span>
                 <span className={`break-words ${shadowClasses[settings.textShadow]}`}>
                   {msg.text}
                 </span>

@@ -33,6 +33,38 @@ function AnimatedMessage({ children, animate }) {
   return <>{children}</>;
 }
 
+// Parse message and replace emotes
+function parseMessage(text) {
+  const emoteRegex = /\[emote:(\d+):([^\]]+)\]/g;
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = emoteRegex.exec(text)) !== null) {
+    // Add text before emote
+    if (match.index > lastIndex) {
+      parts.push({ type: 'text', content: text.slice(lastIndex, match.index) });
+    }
+    
+    // Add emote
+    parts.push({
+      type: 'emote',
+      id: match[1],
+      name: match[2],
+      url: `https://files.kick.com/emotes/${match[1]}/fullsize`
+    });
+    
+    lastIndex = match.index + match[0].length;
+  }
+  
+  // Add remaining text
+  if (lastIndex < text.length) {
+    parts.push({ type: 'text', content: text.slice(lastIndex) });
+  }
+  
+  return parts.length > 0 ? parts : [{ type: 'text', content: text }];
+}
+
 export default function Home() {
   const router = useRouter();
   const [messages, setMessages] = useState([]);
@@ -69,37 +101,37 @@ export default function Home() {
         channel.bind('App\\Events\\ChatMessageEvent', (chatData) => {
           const badgeElements = [];
           
-if (chatData.sender?.identity?.badges && Array.isArray(chatData.sender.identity.badges)) {
-  chatData.sender.identity.badges.forEach(badge => {
-    if (badge.type === 'subscriber') {
-      if (data.subscriber_badges && data.subscriber_badges.length > 0) {
-        const matchingBadges = data.subscriber_badges
-          .filter(b => badge.count >= b.months)
-          .sort((a, b) => b.months - a.months);
-        
-        if (matchingBadges.length > 0 && matchingBadges[0].badge_image?.src) {
-          badgeElements.push({ url: matchingBadges[0].badge_image.src });
-        }
-      }
-    } else if (badge.type === 'sub_gifter') {
-      let gifterBadge = 'subGifter';
-      if (badge.count >= 200) gifterBadge = 'subGifter200';
-      else if (badge.count >= 100) gifterBadge = 'subGifter100';
-      else if (badge.count >= 50) gifterBadge = 'subGifter50';
-      else if (badge.count >= 25) gifterBadge = 'subGifter25';
-      
-      badgeElements.push({ url: `/badges/${gifterBadge}.svg` });
-    } else {
-      badgeElements.push({ url: `/badges/${badge.type}.svg` });
-    }
-  });
-}
+          if (chatData.sender?.identity?.badges && Array.isArray(chatData.sender.identity.badges)) {
+            chatData.sender.identity.badges.forEach(badge => {
+              if (badge.type === 'subscriber') {
+                if (data.subscriber_badges && data.subscriber_badges.length > 0) {
+                  const matchingBadges = data.subscriber_badges
+                    .filter(b => badge.count >= b.months)
+                    .sort((a, b) => b.months - a.months);
+                  
+                  if (matchingBadges.length > 0 && matchingBadges[0].badge_image?.src) {
+                    badgeElements.push({ url: matchingBadges[0].badge_image.src });
+                  }
+                }
+              } else if (badge.type === 'sub_gifter') {
+                let gifterBadge = 'subGifter';
+                if (badge.count >= 200) gifterBadge = 'subGifter200';
+                else if (badge.count >= 100) gifterBadge = 'subGifter100';
+                else if (badge.count >= 50) gifterBadge = 'subGifter50';
+                else if (badge.count >= 25) gifterBadge = 'subGifter25';
+                
+                badgeElements.push({ url: `/badges/${gifterBadge}.svg` });
+              } else {
+                badgeElements.push({ url: `/badges/${badge.type}.svg` });
+              }
+            });
+          }
 
           const newMessage = {
             id: chatData.id,
             username: chatData.sender.username,
             color: chatData.sender.identity.color || '#999999',
-            text: chatData.content,
+            messageParts: parseMessage(chatData.content),
             badges: badgeElements,
             timestamp: Date.now()
           };
@@ -150,7 +182,18 @@ if (chatData.sender?.identity?.badges && Array.isArray(chatData.sender.identity.
                 </span>
                 <span className={shadowClasses[settings.textShadow]}>: </span>
                 <span className={`break-words ${shadowClasses[settings.textShadow]}`}>
-                  {msg.text}
+                  {msg.messageParts.map((part, i) => 
+                    part.type === 'emote' ? (
+                      <img 
+                        key={i}
+                        src={part.url}
+                        alt={part.name}
+                        className="inline-flex max-h-7 h-auto w-auto pr-1"
+                      />
+                    ) : (
+                      <span key={i}>{part.content}</span>
+                    )
+                  )}
                 </span>
               </div>
             </AnimatedMessage>

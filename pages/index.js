@@ -202,6 +202,9 @@ export default function Home() {
 
   const containerStyle = {
     fontFamily: settings.fontCustom || fontMap[settings.font] || fontMap[0],
+    fontSize: '48px',
+    lineHeight: '75px',
+    fontWeight: 800,
     ...getStrokeStyle(settings.stroke),
     ...getShadowStyle(settings.shadow),
     ...(settings.smallCaps && { fontVariant: 'small-caps' })

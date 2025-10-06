@@ -165,18 +165,18 @@ export default function Home() {
 
   // Font families (0-11 + custom)
   const fontMap = {
-    0: 'BalooTammudu',
-    1: 'ui-sans-serif, system-ui',
-    2: 'Roboto, sans-serif',
-    3: 'Lato, sans-serif',
-    4: 'Noto Sans, sans-serif',
-    5: 'Source Code Pro, monospace',
-    6: 'Impact, fantasy',
-    7: 'Comfortaa, cursive',
-    8: 'Dancing Script, cursive',
-    9: 'Indie Flower, cursive',
-    10: 'Open Sans, sans-serif',
-    11: 'AlsinaUltrajada, fantasy'
+    0: "'Baloo Thambi', cursive",
+    1: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
+    2: "'Roboto', sans-serif",
+    3: "'Lato', sans-serif",
+    4: "'Noto Sans', sans-serif",
+    5: "'Source Code Pro', monospace",
+    6: "'Impact', fantasy",
+    7: "'Comfortaa', cursive",
+    8: "'Dancing Script', cursive",
+    9: "'Indie Flower', cursive",
+    10: "'Open Sans', sans-serif",
+    11: "'Alsina Ultrajada', fantasy"
   };
 
   // Stroke thickness (1=thin, 2=medium, 3=thick, 4=thicker)

@@ -86,6 +86,8 @@ export default function Overlay() {
   const router = useRouter();
   const [messages, setMessages] = useState([]);
   const [channelData, setChannelData] = useState(null);
+const [channelEmotes, setChannelEmotes] = useState({});
+
   const [settings, setSettings] = useState({ 
     channel: 'xqc',
     animation: 'slide',
@@ -115,6 +117,48 @@ export default function Overlay() {
 
   useEffect(() => {
     if (!settings.channel) return;
+
+    async function fetchEmotes() {
+      const emotes = {};
+      try {
+        const [sevenTV, bttv, ffz] = await Promise.all([
+          fetch(`https://7tv.io/v3/users/twitch/${settings.channel}`).then(res => res.json()),
+          fetch(`https://api.betterttv.net/3/cached/users/twitch/${settings.channel}`).then(res => res.json()),
+          fetch(`https://api.frankerfacez.com/v1/room/${settings.channel}`).then(res => res.json())
+        ]);
+
+        if (sevenTV.emote_set?.emotes) {
+          sevenTV.emote_set.emotes.forEach(emote => {
+            emotes[emote.name] = `https://cdn.7tv.app/emote/${emote.id}/4x.webp`;
+          });
+        }
+
+        if (bttv.channelEmotes) {
+          bttv.channelEmotes.forEach(emote => {
+            emotes[emote.code] = `https://cdn.betterttv.net/emote/${emote.id}/3x`;
+          });
+        }
+
+        if (bttv.sharedEmotes) {
+          bttv.sharedEmotes.forEach(emote => {
+            emotes[emote.code] = `https://cdn.betterttv.net/emote/${emote.id}/3x`;
+          });
+        }
+
+        if (ffz.sets) {
+          Object.values(ffz.sets).forEach(set => {
+            set.emoticons.forEach(emote => {
+              emotes[emote.name] = `https:${emote.urls['4'] || emote.urls['2']}`;
+            });
+          });
+        }
+
+        setChannelEmotes(emotes);
+      } catch (error) {
+        console.error('Failed to fetch emotes:', error);
+      }
+    }
+
 
     async function connectToKick() {
       try {
@@ -158,7 +202,7 @@ export default function Overlay() {
             id: chatData.id,
             username: chatData.sender.username,
             color: chatData.sender.identity.color || '#999999',
-            messageParts: parseMessage(chatData.content),
+messageParts: parseMessage(chatData.content, channelEmotes),
             badges: badgeElements,
             timestamp: Date.now()
           };
@@ -176,6 +220,7 @@ export default function Overlay() {
       }
     }
 
+fetchEmotes();
     connectToKick();
   }, [settings.channel]);
 

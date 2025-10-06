@@ -227,46 +227,49 @@ export default function Home() {
           {messages.map((msg, index) => (
             <AnimatedMessage key={msg.id} animate={settings.animation === 'slide' && index === messages.length - 1}>
               <div style={{ lineHeight: '75px' }}>
-                {msg.badges?.length > 0 && (
-                  <>
-                    {msg.badges.map((badge, i) => (
-                      <img 
-                        key={i} 
-                        src={badge.url} 
-                        alt="badge"
-                        style={{
-                          width: '40px',
-                          height: '40px',
-                          verticalAlign: 'middle',
-                          borderRadius: '10%',
-                          marginRight: i === msg.badges.length - 1 ? '8px' : '5px',
-                          marginBottom: '8px'
-                        }}
-                      />
-                    ))}
-                  </>
-                )}
-                {!settings.hideNames && (
-                  <>
-                    <span style={{ color: msg.color }}>
-                      {msg.username}
-                    </span>
-                    <span className="colon">: </span>
-                  </>
-                )}
-                <span style={{ wordBreak: 'break-word' }}>
-                  {msg.messageParts.map((part, i) => 
-                    part.type === 'emote' ? (
-                      <img 
-                        key={i}
-                        src={part.url}
-                        alt={part.name}
-                        className={`inline-flex ${currentSize.emote} h-auto w-auto pr-1`}
-                      />
-                    ) : (
-                      <span key={i}>{part.content}</span>
-                    )
+                <span style={{ display: 'inline' }}>
+                  {msg.badges?.length > 0 && (
+                    <>
+                      {msg.badges.map((badge, i) => (
+                        <img 
+                          key={i} 
+                          src={badge.url} 
+                          alt="badge"
+                          style={{
+                            width: '40px',
+                            height: '40px',
+                            verticalAlign: 'middle',
+                            borderRadius: '10%',
+                            marginRight: i === msg.badges.length - 1 ? '8px' : '5px',
+                            marginBottom: '8px',
+                            display: 'inline-block'
+                          }}
+                        />
+                      ))}
+                    </>
                   )}
+                  {!settings.hideNames && (
+                    <>
+                      <span style={{ color: msg.color }}>
+                        {msg.username}
+                      </span>
+                      <span className="colon">: </span>
+                    </>
+                  )}
+                  <span style={{ wordBreak: 'break-word' }}>
+                    {msg.messageParts.map((part, i) => 
+                      part.type === 'emote' ? (
+                        <img 
+                          key={i}
+                          src={part.url}
+                          alt={part.name}
+                          className={`inline-flex ${currentSize.emote} h-auto w-auto pr-1`}
+                        />
+                      ) : (
+                        <span key={i}>{part.content}</span>
+                      )
+                    )}
+                  </span>
                 </span>
               </div>
             </AnimatedMessage>

@@ -1,69 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/router';
-import Head from 'next/head';
-import Pusher from 'pusher-js';
+import { useState } from 'react';
 
-function AnimatedMessage({ children, animate }) {
-  const [isAnimating, setIsAnimating] = useState(animate);
-  const auxRef = useRef(null);
-  const animRef = useRef(null);
-
-  useEffect(() => {
-    if (animate && auxRef.current) {
-      const measuredHeight = auxRef.current.offsetHeight;
-      requestAnimationFrame(() => {
-        if (animRef.current) {
-          animRef.current.style.height = measuredHeight + 'px';
-        }
-      });
-      const timer = setTimeout(() => setIsAnimating(false), 150);
-      return () => clearTimeout(timer);
-    }
-  }, [animate]);
-
-  if (!animate) return <>{children}</>;
-  if (isAnimating) {
-    return (
-      <>
-        <div ref={auxRef} style={{ position: 'absolute', visibility: 'hidden', pointerEvents: 'none' }}>{children}</div>
-        <div ref={animRef} style={{ height: '0px', overflow: 'hidden', transition: 'height 150ms ease-in-out' }} />
-      </>
-    );
-  }
-  return <>{children}</>;
-}
-
-function parseMessage(text) {
-  const emoteRegex = /\[emote:(\d+):([^\]]+)\]/g;
-  const parts = [];
-  let lastIndex = 0;
-  let match;
-
-  while ((match = emoteRegex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push({ type: 'text', content: text.slice(lastIndex, match.index) });
-    }
-    parts.push({
-      type: 'emote',
-      id: match[1],
-      name: match[2],
-      url: `https://files.kick.com/emotes/${match[1]}/fullsize`
-    });
-    lastIndex = match.index + match[0].length;
-  }
-  
-  if (lastIndex < text.length) {
-    parts.push({ type: 'text', content: text.slice(lastIndex) });
-  }
-  
-  return parts.length > 0 ? parts : [{ type: 'text', content: text }];
-}
-
-export default function Home() {
-  const router = useRouter();
-  const [messages, setMessages] = useState([]);
-  const [channelData, setChannelData] = useState(null);
-  const [settings, setSettings] = useState({ 
+export default function OverlayConfig() {
+  const [config, setConfig] = useState({
     channel: 'xqc',
     animation: 'slide',
     size: 3,
@@ -75,207 +13,215 @@ export default function Home() {
     hideNames: false
   });
 
-  useEffect(() => {
-    if (!router.isReady) return;
-    setSettings({
-      channel: router.query.channel || 'xqc',
-      animation: router.query.animation || 'slide',
-      size: parseInt(router.query.size) || 3,
-      font: parseInt(router.query.font) || 0,
-      fontCustom: router.query.fontCustom || '',
-      stroke: parseInt(router.query.stroke) || 0,
-      shadow: parseInt(router.query.shadow) || 0,
-      smallCaps: router.query.smallCaps === 'true',
-      hideNames: router.query.hideNames === 'true'
-    });
-  }, [router.isReady, router.query]);
+  const [overlayUrl, setOverlayUrl] = useState('');
 
-  useEffect(() => {
-    if (!settings.channel) return;
+  const fontOptions = [
+    { value: 0, label: 'Baloo Thambi' },
+    { value: 1, label: 'Segoe UI' },
+    { value: 2, label: 'Roboto' },
+    { value: 3, label: 'Lato' },
+    { value: 4, label: 'Noto Sans' },
+    { value: 5, label: 'Source Code Pro' },
+    { value: 6, label: 'Impact' },
+    { value: 7, label: 'Comfortaa' },
+    { value: 8, label: 'Dancing Script' },
+    { value: 9, label: 'Indie Flower' },
+    { value: 10, label: 'Open Sans' },
+    { value: 11, label: 'Alsina Ultrajada' }
+  ];
 
-    async function connectToKick() {
-      try {
-        const response = await fetch(`https://kick.com/api/v2/channels/${settings.channel}`);
-        const data = await response.json();
-        setChannelData(data);
-
-        const pusher = new Pusher('32cbd69e4b950bf97679', { cluster: 'us2' });
-        const channel = pusher.subscribe(`chatrooms.${data.chatroom.id}.v2`);
-        
-        channel.bind('App\\Events\\ChatMessageEvent', (chatData) => {
-          const badgeElements = [];
-          
-          if (chatData.sender?.identity?.badges && Array.isArray(chatData.sender.identity.badges)) {
-            chatData.sender.identity.badges.forEach(badge => {
-              if (badge.type === 'subscriber') {
-                if (data.subscriber_badges && data.subscriber_badges.length > 0) {
-                  const matchingBadges = data.subscriber_badges
-                    .filter(b => badge.count >= b.months)
-                    .sort((a, b) => b.months - a.months);
-                  
-                  if (matchingBadges.length > 0 && matchingBadges[0].badge_image?.src) {
-                    badgeElements.push({ url: matchingBadges[0].badge_image.src });
-                  }
-                }
-              } else if (badge.type === 'sub_gifter') {
-                let gifterBadge = 'subGifter';
-                if (badge.count >= 200) gifterBadge = 'subGifter200';
-                else if (badge.count >= 100) gifterBadge = 'subGifter100';
-                else if (badge.count >= 50) gifterBadge = 'subGifter50';
-                else if (badge.count >= 25) gifterBadge = 'subGifter25';
-                
-                badgeElements.push({ url: `/badges/${gifterBadge}.svg` });
-              } else {
-                badgeElements.push({ url: `/badges/${badge.type}.svg` });
-              }
-            });
-          }
-
-          const newMessage = {
-            id: chatData.id,
-            username: chatData.sender.username,
-            color: chatData.sender.identity.color || '#999999',
-            messageParts: parseMessage(chatData.content),
-            badges: badgeElements,
-            timestamp: Date.now()
-          };
-
-          setMessages(prev => [...prev.slice(-49), newMessage]);
-        });
-
-        return () => {
-          channel.unbind_all();
-          channel.unsubscribe();
-          pusher.disconnect();
-        };
-      } catch (error) {
-        console.error('Failed to connect to Kick:', error);
-      }
-    }
-
-    connectToKick();
-  }, [settings.channel]);
-
-  // Size classes (1=small, 2=medium, 3=large)
-  const sizeMap = {
-    1: { container: 'text-2xl', emote: 'max-h-[25px]' },
-    2: { container: 'text-4xl', emote: 'max-h-[42px]' },
-    3: { container: 'text-5xl', emote: 'max-h-[60px]' }
+  const generateUrl = () => {
+    const params = new URLSearchParams();
+    params.append('channel', config.channel);
+    if (config.animation !== 'slide') params.append('animation', config.animation);
+    if (config.size !== 3) params.append('size', config.size);
+    if (config.font !== 0) params.append('font', config.font);
+    if (config.fontCustom) params.append('fontCustom', config.fontCustom);
+    if (config.stroke !== 0) params.append('stroke', config.stroke);
+    if (config.shadow !== 0) params.append('shadow', config.shadow);
+    if (config.smallCaps) params.append('smallCaps', 'true');
+    if (config.hideNames) params.append('hideNames', 'true');
+    
+    const url = `${window.location.origin}/overlay?${params.toString()}`;
+    setOverlayUrl(url);
   };
 
-  // Font families (0-11 + custom)
-  const fontMap = {
-    0: "'Baloo Thambi', cursive",
-    1: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
-    2: "'Roboto', sans-serif",
-    3: "'Lato', sans-serif",
-    4: "'Noto Sans', sans-serif",
-    5: "'Source Code Pro', monospace",
-    6: "'Impact', fantasy",
-    7: "'Comfortaa', cursive",
-    8: "'Dancing Script', cursive",
-    9: "'Indie Flower', cursive",
-    10: "'Open Sans', sans-serif",
-    11: "'Alsina Ultrajada', fantasy"
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(overlayUrl);
+    alert('URL copied to clipboard!');
   };
-
-  // Stroke thickness (1=thin, 2=medium, 3=thick, 4=thicker)
-  const getStrokeStyle = (thickness) => {
-    if (!thickness) return {};
-    const widths = { 1: 1, 2: 2, 3: 3, 4: 4 };
-    return {
-      paintOrder: 'stroke fill',
-      WebkitTextStroke: `${widths[thickness]}px black`
-    };
-  };
-
-  // Shadow size (1=small, 2=medium, 3=large)
-  const getShadowStyle = (size) => {
-    if (!size) return '';
-    const shadows = {
-      1: 'drop-shadow(1px 1px 0.3rem black)',
-      2: 'drop-shadow(2px 2px 0.5rem black)',
-      3: 'drop-shadow(3px 3px 0.7rem black)'
-    };
-    return shadows[size];
-  };
-
-  const containerStyle = {
-    fontFamily: settings.fontCustom || fontMap[settings.font] || fontMap[0],
-    fontSize: '48px',
-    lineHeight: '75px',
-    fontWeight: 800,
-    ...getStrokeStyle(settings.stroke),
-    ...(settings.shadow && { filter: getShadowStyle(settings.shadow) }),
-    ...(settings.smallCaps && { fontVariant: 'small-caps' })
-  };
-
-  const currentSize = sizeMap[settings.size] || sizeMap[3];
 
   return (
-    <>
-      <Head><title>Kick Chat Overlay - {settings.channel}</title></Head>
-      <div className="min-h-screen w-full">
-        <div 
-          className={`absolute bottom-0 left-0 w-full overflow-hidden text-white`}
-          style={{
-            ...containerStyle,
-            width: 'calc(100% - 20px)',
-            padding: '10px'
-          }}
-        >
-          {messages.map((msg, index) => (
-            <AnimatedMessage key={msg.id} animate={settings.animation === 'slide' && index === messages.length - 1}>
-              <div style={{ lineHeight: '75px' }}>
-                <span style={{ display: 'inline' }}>
-                  {msg.badges?.length > 0 && (
-                    <>
-                      {msg.badges.map((badge, i) => (
-                        <img 
-                          key={i} 
-                          src={badge.url} 
-                          alt="badge"
-                          style={{
-                            width: '40px',
-                            height: '40px',
-                            verticalAlign: 'middle',
-                            borderRadius: '10%',
-                            marginRight: i === msg.badges.length - 1 ? '8px' : '5px',
-                            marginBottom: '8px',
-                            display: 'inline-block'
-                          }}
-                        />
-                      ))}
-                    </>
-                  )}
-                  {!settings.hideNames && (
-                    <>
-                      <span style={{ color: msg.color }}>
-                        {msg.username}
-                      </span>
-                      <span className="colon">: </span>
-                    </>
-                  )}
-                  <span style={{ wordBreak: 'break-word' }}>
-                    {msg.messageParts.map((part, i) => 
-                      part.type === 'emote' ? (
-                        <img 
-                          key={i}
-                          src={part.url}
-                          alt={part.name}
-                          className={`inline-flex ${currentSize.emote} h-auto w-auto pr-1`}
-                        />
-                      ) : (
-                        <span key={i}>{part.content}</span>
-                      )
-                    )}
-                  </span>
-                </span>
-              </div>
-            </AnimatedMessage>
-          ))}
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 text-white p-8">
+      <div className="max-w-4xl mx-auto">
+        <div className="text-center mb-12">
+          <h1 className="text-6xl font-extrabold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-green-400 to-blue-500">
+            Kick Chat Overlay
+          </h1>
+          <p className="text-xl text-gray-300">Configure your custom chat overlay for OBS/Streamlabs</p>
         </div>
+
+        <div className="bg-gray-800 rounded-lg shadow-2xl p-8 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Channel Name */}
+            <div>
+              <label className="block text-sm font-bold mb-2">Channel Name</label>
+              <input
+                type="text"
+                value={config.channel}
+                onChange={(e) => setConfig({...config, channel: e.target.value})}
+                className="w-full px-4 py-2 bg-gray-700 rounded border border-gray-600 focus:border-green-500 focus:outline-none"
+                placeholder="xqc"
+              />
+            </div>
+
+            {/* Animation */}
+            <div>
+              <label className="block text-sm font-bold mb-2">Animation</label>
+              <select
+                value={config.animation}
+                onChange={(e) => setConfig({...config, animation: e.target.value})}
+                className="w-full px-4 py-2 bg-gray-700 rounded border border-gray-600 focus:border-green-500 focus:outline-none"
+              >
+                <option value="slide">Slide</option>
+                <option value="none">None</option>
+              </select>
+            </div>
+
+            {/* Size */}
+            <div>
+              <label className="block text-sm font-bold mb-2">Text Size</label>
+              <select
+                value={config.size}
+                onChange={(e) => setConfig({...config, size: parseInt(e.target.value)})}
+                className="w-full px-4 py-2 bg-gray-700 rounded border border-gray-600 focus:border-green-500 focus:outline-none"
+              >
+                <option value="1">Small</option>
+                <option value="2">Medium</option>
+                <option value="3">Large</option>
+              </select>
+            </div>
+
+            {/* Font */}
+            <div>
+              <label className="block text-sm font-bold mb-2">Font</label>
+              <select
+                value={config.font}
+                onChange={(e) => setConfig({...config, font: parseInt(e.target.value)})}
+                className="w-full px-4 py-2 bg-gray-700 rounded border border-gray-600 focus:border-green-500 focus:outline-none"
+              >
+                {fontOptions.map(font => (
+                  <option key={font.value} value={font.value}>{font.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Custom Font */}
+            <div>
+              <label className="block text-sm font-bold mb-2">Custom Font (optional)</label>
+              <input
+                type="text"
+                value={config.fontCustom}
+                onChange={(e) => setConfig({...config, fontCustom: e.target.value})}
+                className="w-full px-4 py-2 bg-gray-700 rounded border border-gray-600 focus:border-green-500 focus:outline-none"
+                placeholder="Arial, sans-serif"
+              />
+            </div>
+
+            {/* Stroke */}
+            <div>
+              <label className="block text-sm font-bold mb-2">Text Stroke</label>
+              <select
+                value={config.stroke}
+                onChange={(e) => setConfig({...config, stroke: parseInt(e.target.value)})}
+                className="w-full px-4 py-2 bg-gray-700 rounded border border-gray-600 focus:border-green-500 focus:outline-none"
+              >
+                <option value="0">None</option>
+                <option value="1">Thin</option>
+                <option value="2">Medium</option>
+                <option value="3">Thick</option>
+                <option value="4">Thicker</option>
+              </select>
+            </div>
+
+            {/* Shadow */}
+            <div>
+              <label className="block text-sm font-bold mb-2">Text Shadow</label>
+              <select
+                value={config.shadow}
+                onChange={(e) => setConfig({...config, shadow: parseInt(e.target.value)})}
+                className="w-full px-4 py-2 bg-gray-700 rounded border border-gray-600 focus:border-green-500 focus:outline-none"
+              >
+                <option value="0">None</option>
+                <option value="1">Small</option>
+                <option value="2">Medium</option>
+                <option value="3">Large</option>
+              </select>
+            </div>
+
+            {/* Small Caps */}
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="smallCaps"
+                checked={config.smallCaps}
+                onChange={(e) => setConfig({...config, smallCaps: e.target.checked})}
+                className="w-5 h-5 bg-gray-700 rounded border-gray-600 focus:ring-green-500"
+              />
+              <label htmlFor="smallCaps" className="ml-3 text-sm font-bold">Small Caps</label>
+            </div>
+
+            {/* Hide Names */}
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="hideNames"
+                checked={config.hideNames}
+                onChange={(e) => setConfig({...config, hideNames: e.target.checked})}
+                className="w-5 h-5 bg-gray-700 rounded border-gray-600 focus:ring-green-500"
+              />
+              <label htmlFor="hideNames" className="ml-3 text-sm font-bold">Hide Usernames</label>
+            </div>
+          </div>
+
+          <button
+            onClick={generateUrl}
+            className="w-full mt-8 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white font-bold py-4 px-6 rounded-lg text-xl transition-all transform hover:scale-105"
+          >
+            Generate Overlay URL
+          </button>
+        </div>
+
+        {overlayUrl && (
+          <div className="bg-gray-800 rounded-lg shadow-2xl p-8">
+            <h2 className="text-2xl font-bold mb-4">Your Overlay URL</h2>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={overlayUrl}
+                readOnly
+                className="flex-1 px-4 py-3 bg-gray-700 rounded border border-gray-600 text-sm"
+              />
+              <button
+                onClick={copyToClipboard}
+                className="bg-green-600 hover:bg-green-700 text-white font-bold px-6 py-3 rounded transition-all"
+              >
+                Copy
+              </button>
+            </div>
+            <div className="mt-6 p-4 bg-gray-700 rounded">
+              <h3 className="font-bold mb-2">How to use in OBS:</h3>
+              <ol className="list-decimal list-inside space-y-2 text-sm text-gray-300">
+                <li>Add a new Browser Source in OBS</li>
+                <li>Paste the URL above into the URL field</li>
+                <li>Set Width to 1920 and Height to 1080 (or your canvas size)</li>
+                <li>Check "Shutdown source when not visible" (optional)</li>
+                <li>Click OK and position the overlay on your scene</li>
+              </ol>
+            </div>
+          </div>
+        )}
       </div>
-    </>
+    </div>
   );
 }

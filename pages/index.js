@@ -4,65 +4,68 @@ import Head from 'next/head';
 import Pusher from 'pusher-js';
 
 function AnimatedMessage({ children, animate }) {
-  const [isAnimating, setIsAnimating] = useState(animate);
-  const auxRef = useRef(null);
+  const [phase, setPhase] = useState(animate ? 'measuring' : 'done');
+  const measureRef = useRef(null);
   const animRef = useRef(null);
 
   useEffect(() => {
-    if (animate && auxRef.current) {
-      const measuredHeight = auxRef.current.offsetHeight;
+    if (!animate) return;
+    
+    if (phase === 'measuring' && measureRef.current) {
+      const height = measureRef.current.offsetHeight;
+      setPhase('animating');
+      
       requestAnimationFrame(() => {
         if (animRef.current) {
-          animRef.current.style.height = measuredHeight + 'px';
+          animRef.current.style.height = '0px';
+          requestAnimationFrame(() => {
+            if (animRef.current) {
+              animRef.current.style.height = height + 'px';
+            }
+          });
         }
       });
-      const timer = setTimeout(() => setIsAnimating(false), 200);
+      
+      const timer = setTimeout(() => setPhase('done'), 150);
       return () => clearTimeout(timer);
     }
-  }, [animate]);
+  }, [phase, animate]);
 
-  if (!animate) return <>{children}</>;
-  if (isAnimating) {
+  if (!animate || phase === 'done') {
+    return <>{children}</>;
+  }
+
+  if (phase === 'measuring') {
     return (
-      <>
-        <div ref={auxRef} style={{ position: 'absolute', visibility: 'hidden', pointerEvents: 'none' }}>{children}</div>
-        <div 
-          ref={animRef} 
-          style={{ 
-            height: '0px', 
-            overflow: 'hidden', 
-            transition: 'height 200ms cubic-bezier(0.4, 0.0, 0.2, 1)'
-          }} 
-        />
-      </>
+      <div ref={measureRef} style={{ visibility: 'hidden', position: 'absolute' }}>
+        {children}
+      </div>
     );
   }
-  return <>{children}</>;
+
+  return (
+    <div 
+      ref={animRef}
+      style={{
+        overflow: 'hidden',
+        transition: 'height 150ms ease-out',
+        willChange: 'height'
+      }}
+    >
+      {children}
+    </div>
+  );
 }
 
-function parseMessage(text, channelData = null) {
-  // Build emote lookup from 7TV data
-  const channelEmotes = {};
-  if (channelData?.seventvEmotes) {
-    channelData.seventvEmotes.forEach(emote => {
-      const webpFiles = emote.data.host.files.filter(f => f.format === 'WEBP');
-      const maxFile = webpFiles[webpFiles.length - 1];
-      if (maxFile) {
-        channelEmotes[emote.name] = 'https:' + emote.data.host.url + '/' + maxFile.name;
-      }
-    });
-  }
-
+function parseMessage(text, emoteMap = {}) {
   const emoteRegex = /\[emote:(\d+):([^\]]+)\]/g;
   const parts = [];
   let lastIndex = 0;
   let match;
 
-  // First, handle Kick's [emote:id:name] format
   while ((match = emoteRegex.exec(text)) !== null) {
     if (match.index > lastIndex) {
-      const textPart = text.slice(lastIndex, match.index);
-      parts.push({ type: 'text', content: textPart });
+      parts.push({ type: 'text', content: text.slice(lastIndex, match.index) });
     }
     parts.push({
       type: 'emote',
@@ -77,17 +80,16 @@ function parseMessage(text, channelData = null) {
     parts.push({ type: 'text', content: text.slice(lastIndex) });
   }
 
-  // Then, handle plain text emotes (7TV, BTTV, FFZ)
   const finalParts = [];
   for (const part of parts) {
     if (part.type === 'text') {
       const words = part.content.split(/(\s+)/);
       for (const word of words) {
-        if (channelEmotes[word]) {
+        if (emoteMap[word]) {
           finalParts.push({
             type: 'emote',
             name: word,
-            url: channelEmotes[word]
+            url: emoteMap[word]
           });
         } else {
           finalParts.push({ type: 'text', content: word });
@@ -105,6 +107,7 @@ export default function Overlay() {
   const router = useRouter();
   const [messages, setMessages] = useState([]);
   const [channelData, setChannelData] = useState(null);
+  const [emoteMap, setEmoteMap] = useState({});
   const [settings, setSettings] = useState({ 
     channel: 'xqc',
     animation: 'slide',
@@ -132,37 +135,93 @@ export default function Overlay() {
     });
   }, [router.isReady, router.query]);
 
-  // Load 7TV emotes
   useEffect(() => {
     if (!settings.channel) return;
 
-    async function load7TVEmotes() {
+    async function loadEmotes() {
+      const newEmoteMap = {};
+      
       try {
-        // First get the Twitch user ID from username
-        const twitchUserResponse = await fetch(`https://decapi.me/twitch/id/${settings.channel}`);
-        const twitchUserId = await twitchUserResponse.text();
-        
-        if (!twitchUserId || twitchUserId.includes('User not found')) {
-          console.warn('Could not find Twitch user for 7TV emotes');
-          return;
+        // Load 7TV emotes - try multiple methods
+        try {
+          // Method 1: Direct platform search
+          const stvResponse = await fetch(`https://7tv.io/v3/users/kick/${settings.channel}`);
+          if (stvResponse.ok) {
+            const stvData = await stvResponse.json();
+            if (stvData?.emote_set?.emotes) {
+              stvData.emote_set.emotes.forEach(emote => {
+                const files = emote.data?.host?.files || [];
+                const webpFile = files.find(f => f.name === '4x.webp') || files[files.length - 1];
+                if (webpFile && emote.data?.host?.url) {
+                  newEmoteMap[emote.name] = `https:${emote.data.host.url}/${webpFile.name}`;
+                }
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('7TV Kick lookup failed, trying Twitch fallback:', e);
+          
+          // Method 2: Try Twitch username as fallback
+          try {
+            const twitchIdRes = await fetch(`https://decapi.me/twitch/id/${settings.channel}`);
+            const twitchId = await twitchIdRes.text();
+            
+            if (twitchId && !twitchId.includes('User not found')) {
+              const stvResponse = await fetch(`https://7tv.io/v3/users/twitch/${twitchId}`);
+              if (stvResponse.ok) {
+                const stvData = await stvResponse.json();
+                if (stvData?.emote_set?.emotes) {
+                  stvData.emote_set.emotes.forEach(emote => {
+                    const files = emote.data?.host?.files || [];
+                    const webpFile = files.find(f => f.name === '4x.webp') || files[files.length - 1];
+                    if (webpFile && emote.data?.host?.url) {
+                      newEmoteMap[emote.name] = `https:${emote.data.host.url}/${webpFile.name}`;
+                    }
+                  });
+                }
+              }
+            }
+          } catch (e2) {
+            console.warn('7TV Twitch lookup also failed:', e2);
+          }
         }
 
-        // Then fetch 7TV emotes for that user
-        const stvResponse = await fetch(`https://7tv.io/v3/users/twitch/${twitchUserId}`);
-        const stvData = await stvResponse.json();
-        
-        if (stvData?.emote_set?.emotes) {
-          setChannelData(prev => ({
-            ...prev,
-            seventvEmotes: stvData.emote_set.emotes
-          }));
+        // Load BTTV emotes
+        try {
+          const bttvResponse = await fetch(`https://api.betterttv.net/3/cached/users/kick/${settings.channel}`);
+          if (bttvResponse.ok) {
+            const bttvData = await bttvResponse.json();
+            [...(bttvData.channelEmotes || []), ...(bttvData.sharedEmotes || [])].forEach(emote => {
+              newEmoteMap[emote.code] = `https://cdn.betterttv.net/emote/${emote.id}/3x`;
+            });
+          }
+        } catch (e) {
+          console.warn('BTTV fetch failed:', e);
         }
+
+        // Load FFZ emotes
+        try {
+          const ffzResponse = await fetch(`https://api.betterttv.net/3/cached/frankerfacez/users/kick/${settings.channel}`);
+          if (ffzResponse.ok) {
+            const ffzData = await ffzResponse.json();
+            ffzData.forEach(emote => {
+              const url = emote.images['4x'] || emote.images['2x'] || emote.images['1x'];
+              if (url) newEmoteMap[emote.code] = url;
+            });
+          }
+        } catch (e) {
+          console.warn('FFZ fetch failed:', e);
+        }
+
+        console.log('Loaded emotes:', Object.keys(newEmoteMap));
+        setEmoteMap(newEmoteMap);
+        
       } catch (error) {
-        console.error('Failed to load 7TV emotes:', error);
+        console.error('Failed to load emotes:', error);
       }
     }
 
-    load7TVEmotes();
+    loadEmotes();
   }, [settings.channel]);
 
   useEffect(() => {
@@ -172,10 +231,7 @@ export default function Overlay() {
       try {
         const response = await fetch(`https://kick.com/api/v2/channels/${settings.channel}`);
         const data = await response.json();
-        setChannelData(prev => ({
-          ...prev,
-          ...data
-        }));
+        setChannelData(data);
 
         const pusher = new Pusher('32cbd69e4b950bf97679', { cluster: 'us2' });
         const channel = pusher.subscribe(`chatrooms.${data.chatroom.id}.v2`);
@@ -213,7 +269,7 @@ export default function Overlay() {
             id: chatData.id,
             username: chatData.sender.username,
             color: chatData.sender.identity.color || '#999999',
-            messageParts: parseMessage(chatData.content, channelData),
+            messageParts: parseMessage(chatData.content, emoteMap),
             badges: badgeElements,
             timestamp: Date.now()
           };
@@ -232,16 +288,14 @@ export default function Overlay() {
     }
 
     connectToKick();
-  }, [settings.channel, channelData]);
+  }, [settings.channel, emoteMap]);
 
-  // Size classes (1=small, 2=medium, 3=large)
   const sizeMap = {
     1: { container: 'text-2xl', emote: 'max-h-[25px]' },
     2: { container: 'text-4xl', emote: 'max-h-[42px]' },
     3: { container: 'text-5xl', emote: 'max-h-[60px]' }
   };
 
-  // Font families (0-11 + custom)
   const fontMap = {
     0: "'Baloo Thambi', cursive",
     1: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
@@ -257,7 +311,6 @@ export default function Overlay() {
     11: "'Alsina Ultrajada', fantasy"
   };
 
-  // Stroke thickness (1=thin, 2=medium, 3=thick, 4=thicker)
   const getStrokeStyle = (thickness) => {
     if (!thickness) return {};
     const widths = { 1: 1, 2: 2, 3: 3, 4: 4 };
@@ -267,7 +320,6 @@ export default function Overlay() {
     };
   };
 
-  // Shadow size (1=small, 2=medium, 3=large)
   const getShadowStyle = (size) => {
     if (!size) return '';
     const shadows = {
@@ -295,7 +347,7 @@ export default function Overlay() {
       <Head><title>Kick Chat Overlay - {settings.channel}</title></Head>
       <div className="min-h-screen w-full">
         <div 
-          className={`absolute bottom-0 left-0 w-full overflow-hidden text-white`}
+          className="absolute bottom-0 left-0 w-full overflow-hidden text-white"
           style={{
             ...containerStyle,
             width: 'calc(100% - 20px)',

@@ -59,7 +59,7 @@ function parseMessage(text) {
   return parts.length > 0 ? parts : [{ type: 'text', content: text }];
 }
 
-export default function Home() {
+export default function Overlay() {
   const router = useRouter();
   const [messages, setMessages] = useState([]);
   const [channelData, setChannelData] = useState(null);

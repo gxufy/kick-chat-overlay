@@ -16,7 +16,7 @@ function AnimatedMessage({ children, animate }) {
           animRef.current.style.height = measuredHeight + 'px';
         }
       });
-      const timer = setTimeout(() => setIsAnimating(false), 300);
+      const timer = setTimeout(() => setIsAnimating(false), 150);
       return () => clearTimeout(timer);
     }
   }, [animate]);
@@ -26,7 +26,7 @@ function AnimatedMessage({ children, animate }) {
     return (
       <>
         <div ref={auxRef} style={{ position: 'absolute', visibility: 'hidden', pointerEvents: 'none' }}>{children}</div>
-        <div ref={animRef} style={{ height: '0px', overflow: 'hidden', transition: 'height 300ms ease-out' }} />
+        <div ref={animRef} style={{ height: '0px', overflow: 'hidden', transition: 'height 150ms ease-in-out' }} />
       </>
     );
   }
@@ -86,7 +86,6 @@ export default function Overlay() {
   const router = useRouter();
   const [messages, setMessages] = useState([]);
   const [channelData, setChannelData] = useState(null);
-  const [channelEmotes, setChannelEmotes] = useState({});
   const [settings, setSettings] = useState({ 
     channel: 'xqc',
     animation: 'slide',
@@ -117,61 +116,11 @@ export default function Overlay() {
   useEffect(() => {
     if (!settings.channel) return;
 
-    async function loadEmotes(channelSlug) {
-      const emotes = {};
-      
-      try {
-        // Load 7TV emotes
-        const stvResponse = await fetch(`https://7tv.io/v3/users/kick/${channelSlug}`);
-        if (stvResponse.ok) {
-          const stvData = await stvResponse.json();
-          if (stvData.emote_set?.emotes) {
-            stvData.emote_set.emotes.forEach(emote => {
-              const webpFiles = emote.data.host.files.filter(f => f.format === 'WEBP');
-              const maxSize = webpFiles[webpFiles.length - 1]?.name || '4x.webp';
-              emotes[emote.name] = `https:${emote.data.host.url}/${maxSize}`;
-            });
-          }
-        }
-
-        // Load BTTV emotes
-        const bttvResponse = await fetch(`https://api.betterttv.net/3/cached/users/kick/${channelSlug}`);
-        if (bttvResponse.ok) {
-          const bttvData = await bttvResponse.json();
-          [...(bttvData.channelEmotes || []), ...(bttvData.sharedEmotes || [])].forEach(emote => {
-            emotes[emote.code] = `https://cdn.betterttv.net/emote/${emote.id}/3x`;
-          });
-        }
-
-        // Load FFZ emotes
-        const ffzResponse = await fetch(`https://api.betterttv.net/3/cached/frankerfacez/users/kick/${channelSlug}`);
-        if (ffzResponse.ok) {
-          const ffzData = await ffzResponse.json();
-          ffzData.forEach(emote => {
-            const imageUrl = emote.images['4x'] || emote.images['2x'] || emote.images['1x'];
-            emotes[emote.code] = imageUrl;
-          });
-        }
-      } catch (error) {
-        console.error('Error loading emotes:', error);
-      }
-
-      setChannelEmotes(emotes);
-    }
-
     async function connectToKick() {
       try {
         const response = await fetch(`https://kick.com/api/v2/channels/${settings.channel}`);
-        if (!response.ok) {
-          console.error('Channel not found:', settings.channel);
-          return;
-        }
         const data = await response.json();
-        console.log('Connected to channel:', data.slug, 'Chatroom ID:', data.chatroom.id);
         setChannelData(data);
-
-        // Load emotes for this specific channel
-        await loadEmotes(data.slug);
 
         const pusher = new Pusher('32cbd69e4b950bf97679', { cluster: 'us2' });
         const channel = pusher.subscribe(`chatrooms.${data.chatroom.id}.v2`);
@@ -209,7 +158,7 @@ export default function Overlay() {
             id: chatData.id,
             username: chatData.sender.username,
             color: chatData.sender.identity.color || '#999999',
-            messageParts: parseMessage(chatData.content, channelEmotes),
+            messageParts: parseMessage(chatData.content),
             badges: badgeElements,
             timestamp: Date.now()
           };
@@ -228,7 +177,7 @@ export default function Overlay() {
     }
 
     connectToKick();
-  }, [settings.channel, channelEmotes]);
+  }, [settings.channel]);
 
   // Size classes (1=small, 2=medium, 3=large)
   const sizeMap = {

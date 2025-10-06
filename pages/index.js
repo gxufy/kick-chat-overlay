@@ -132,12 +132,32 @@ export default function Overlay() {
       try {
         console.log('[Kick Overlay] Loading emotes for:', channelSlug);
         
-        // Load 7TV emotes
+        // Load 7TV GLOBAL emotes (Kick-specific emotes don't work reliably)
+        try {
+          const stvGlobalResponse = await fetch('https://7tv.io/v3/emote-sets/global');
+          if (stvGlobalResponse.ok) {
+            const stvGlobalData = await stvGlobalResponse.json();
+            console.log('[Kick Overlay] 7TV global data:', stvGlobalData);
+            
+            if (stvGlobalData.emotes) {
+              stvGlobalData.emotes.forEach(emote => {
+                const webpFiles = emote.data.host.files.filter(f => f.format === 'WEBP');
+                const maxSize = webpFiles[webpFiles.length - 1]?.name || '4x.webp';
+                const emoteUrl = `https:${emote.data.host.url}/${maxSize}`;
+                emotes[emote.name] = emoteUrl;
+                console.log('[Kick Overlay] Added 7TV global emote:', emote.name);
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('[Kick Overlay] 7TV global loading failed:', e);
+        }
+
+        // Try loading channel-specific 7TV (might not work for Kick)
         try {
           const stvResponse = await fetch(`https://7tv.io/v3/users/kick/${channelSlug}`);
           if (stvResponse.ok) {
             const stvData = await stvResponse.json();
-            console.log('[Kick Overlay] 7TV data:', stvData);
             
             if (stvData.emote_set?.emotes) {
               stvData.emote_set.emotes.forEach(emote => {
@@ -145,12 +165,12 @@ export default function Overlay() {
                 const maxSize = webpFiles[webpFiles.length - 1]?.name || '4x.webp';
                 const emoteUrl = `https:${emote.data.host.url}/${maxSize}`;
                 emotes[emote.name] = emoteUrl;
-                console.log('[Kick Overlay] Added 7TV emote:', emote.name);
+                console.log('[Kick Overlay] Added 7TV channel emote:', emote.name);
               });
             }
           }
         } catch (e) {
-          console.warn('[Kick Overlay] 7TV loading failed:', e);
+          console.warn('[Kick Overlay] 7TV channel loading failed (expected for Kick):', e);
         }
 
         // Load BTTV emotes
@@ -160,6 +180,7 @@ export default function Overlay() {
             const bttvData = await bttvResponse.json();
             [...(bttvData.channelEmotes || []), ...(bttvData.sharedEmotes || [])].forEach(emote => {
               emotes[emote.code] = `https://cdn.betterttv.net/emote/${emote.id}/3x`;
+              console.log('[Kick Overlay] Added BTTV emote:', emote.code);
             });
           }
         } catch (e) {
@@ -175,6 +196,7 @@ export default function Overlay() {
               ffzData.forEach(emote => {
                 const imageUrl = emote.images['4x'] || emote.images['2x'] || emote.images['1x'];
                 emotes[emote.code] = imageUrl;
+                console.log('[Kick Overlay] Added FFZ emote:', emote.code);
               });
             }
           }
@@ -185,7 +207,7 @@ export default function Overlay() {
         console.error('[Kick Overlay] Error loading emotes:', error);
       }
 
-      console.log('[Kick Overlay] Total emotes loaded:', Object.keys(emotes).length, emotes);
+      console.log('[Kick Overlay] Total emotes loaded:', Object.keys(emotes).length);
       setChannelEmotes(emotes);
       channelEmotesRef.current = emotes;
     }

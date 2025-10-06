@@ -217,7 +217,7 @@ export default function Home() {
       <Head><title>Kick Chat Overlay - {settings.channel}</title></Head>
       <div className="min-h-screen w-full">
         <div 
-          className={`absolute bottom-0 left-0 w-full overflow-hidden ${currentSize.container} text-white font-extrabold leading-relaxed`}
+          className={`absolute bottom-0 left-0 w-full overflow-hidden text-white`}
           style={containerStyle}
         >
           {messages.map((msg, index) => (
@@ -230,11 +230,9 @@ export default function Home() {
                         key={i} 
                         src={badge.url} 
                         alt="badge"
+                        width={72}
+                        height={72}
                         className="inline-block"
-                        style={{ 
-                          height: '1.5em',
-                          width: 'auto'
-                        }}
                       />
                     ))}
                   </span>

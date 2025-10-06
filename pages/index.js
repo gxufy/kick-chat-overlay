@@ -16,7 +16,7 @@ function AnimatedMessage({ children, animate }) {
           animRef.current.style.height = measuredHeight + 'px';
         }
       });
-      const timer = setTimeout(() => setIsAnimating(false), 150);
+      const timer = setTimeout(() => setIsAnimating(false), 300);
       return () => clearTimeout(timer);
     }
   }, [animate]);
@@ -26,22 +26,24 @@ function AnimatedMessage({ children, animate }) {
     return (
       <>
         <div ref={auxRef} style={{ position: 'absolute', visibility: 'hidden', pointerEvents: 'none' }}>{children}</div>
-        <div ref={animRef} style={{ height: '0px', overflow: 'hidden', transition: 'height 150ms ease-in-out' }} />
+        <div ref={animRef} style={{ height: '0px', overflow: 'hidden', transition: 'height 300ms ease-out' }} />
       </>
     );
   }
   return <>{children}</>;
 }
 
-function parseMessage(text) {
+function parseMessage(text, channelEmotes = {}) {
   const emoteRegex = /\[emote:(\d+):([^\]]+)\]/g;
   const parts = [];
   let lastIndex = 0;
   let match;
 
+  // First, handle Kick's [emote:id:name] format
   while ((match = emoteRegex.exec(text)) !== null) {
     if (match.index > lastIndex) {
-      parts.push({ type: 'text', content: text.slice(lastIndex, match.index) });
+      const textPart = text.slice(lastIndex, match.index);
+      parts.push({ type: 'text', content: textPart });
     }
     parts.push({
       type: 'emote',
@@ -55,14 +57,37 @@ function parseMessage(text) {
   if (lastIndex < text.length) {
     parts.push({ type: 'text', content: text.slice(lastIndex) });
   }
+
+  // Then, handle plain text emotes (7TV, BTTV, FFZ)
+  const finalParts = [];
+  for (const part of parts) {
+    if (part.type === 'text') {
+      const words = part.content.split(/(\s+)/);
+      for (const word of words) {
+        if (word.trim() && channelEmotes[word]) {
+          finalParts.push({
+            type: 'emote',
+            name: word,
+            url: channelEmotes[word]
+          });
+        } else {
+          finalParts.push({ type: 'text', content: word });
+        }
+      }
+    } else {
+      finalParts.push(part);
+    }
+  }
   
-  return parts.length > 0 ? parts : [{ type: 'text', content: text }];
+  return finalParts.length > 0 ? finalParts : [{ type: 'text', content: text }];
 }
 
-export default function Home() {
+export default function Overlay() {
   const router = useRouter();
   const [messages, setMessages] = useState([]);
   const [channelData, setChannelData] = useState(null);
+  const [channelEmotes, setChannelEmotes] = useState({});
+  const channelEmotesRef = useRef({});
   const [settings, setSettings] = useState({ 
     channel: 'xqc',
     animation: 'slide',
@@ -74,6 +99,11 @@ export default function Home() {
     smallCaps: false,
     hideNames: false
   });
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    channelEmotesRef.current = channelEmotes;
+  }, [channelEmotes]);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -93,16 +123,91 @@ export default function Home() {
   useEffect(() => {
     if (!settings.channel) return;
 
+    let pusherInstance = null;
+    let channelInstance = null;
+
+    async function loadEmotes(channelSlug) {
+      const emotes = {};
+      
+      try {
+        console.log('[Kick Overlay] Loading emotes for:', channelSlug);
+        
+        // Load 7TV emotes
+        try {
+          const stvResponse = await fetch(`https://7tv.io/v3/users/kick/${channelSlug}`);
+          if (stvResponse.ok) {
+            const stvData = await stvResponse.json();
+            console.log('[Kick Overlay] 7TV data:', stvData);
+            
+            if (stvData.emote_set?.emotes) {
+              stvData.emote_set.emotes.forEach(emote => {
+                const webpFiles = emote.data.host.files.filter(f => f.format === 'WEBP');
+                const maxSize = webpFiles[webpFiles.length - 1]?.name || '4x.webp';
+                const emoteUrl = `https:${emote.data.host.url}/${maxSize}`;
+                emotes[emote.name] = emoteUrl;
+                console.log('[Kick Overlay] Added 7TV emote:', emote.name);
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('[Kick Overlay] 7TV loading failed:', e);
+        }
+
+        // Load BTTV emotes
+        try {
+          const bttvResponse = await fetch(`https://api.betterttv.net/3/cached/users/kick/${channelSlug}`);
+          if (bttvResponse.ok) {
+            const bttvData = await bttvResponse.json();
+            [...(bttvData.channelEmotes || []), ...(bttvData.sharedEmotes || [])].forEach(emote => {
+              emotes[emote.code] = `https://cdn.betterttv.net/emote/${emote.id}/3x`;
+            });
+          }
+        } catch (e) {
+          console.warn('[Kick Overlay] BTTV loading failed:', e);
+        }
+
+        // Load FFZ emotes
+        try {
+          const ffzResponse = await fetch(`https://api.betterttv.net/3/cached/frankerfacez/users/kick/${channelSlug}`);
+          if (ffzResponse.ok) {
+            const ffzData = await ffzResponse.json();
+            if (Array.isArray(ffzData)) {
+              ffzData.forEach(emote => {
+                const imageUrl = emote.images['4x'] || emote.images['2x'] || emote.images['1x'];
+                emotes[emote.code] = imageUrl;
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('[Kick Overlay] FFZ loading failed:', e);
+        }
+      } catch (error) {
+        console.error('[Kick Overlay] Error loading emotes:', error);
+      }
+
+      console.log('[Kick Overlay] Total emotes loaded:', Object.keys(emotes).length, emotes);
+      setChannelEmotes(emotes);
+      channelEmotesRef.current = emotes;
+    }
+
     async function connectToKick() {
       try {
         const response = await fetch(`https://kick.com/api/v2/channels/${settings.channel}`);
+        if (!response.ok) {
+          console.error('[Kick Overlay] Channel not found:', settings.channel);
+          return;
+        }
         const data = await response.json();
+        console.log('[Kick Overlay] Connected to:', data.slug, 'Chatroom ID:', data.chatroom.id);
         setChannelData(data);
 
-        const pusher = new Pusher('32cbd69e4b950bf97679', { cluster: 'us2' });
-        const channel = pusher.subscribe(`chatrooms.${data.chatroom.id}.v2`);
+        // Load emotes FIRST
+        await loadEmotes(data.slug);
+
+        pusherInstance = new Pusher('32cbd69e4b950bf97679', { cluster: 'us2' });
+        channelInstance = pusherInstance.subscribe(`chatrooms.${data.chatroom.id}.v2`);
         
-        channel.bind('App\\Events\\ChatMessageEvent', (chatData) => {
+        channelInstance.bind('App\\Events\\ChatMessageEvent', (chatData) => {
           const badgeElements = [];
           
           if (chatData.sender?.identity?.badges && Array.isArray(chatData.sender.identity.badges)) {
@@ -131,29 +236,36 @@ export default function Home() {
             });
           }
 
+          // Use ref to get current emotes
+          const currentEmotes = channelEmotesRef.current;
+          
           const newMessage = {
             id: chatData.id,
             username: chatData.sender.username,
             color: chatData.sender.identity.color || '#999999',
-            messageParts: parseMessage(chatData.content),
+            messageParts: parseMessage(chatData.content, currentEmotes),
             badges: badgeElements,
             timestamp: Date.now()
           };
 
           setMessages(prev => [...prev.slice(-49), newMessage]);
         });
-
-        return () => {
-          channel.unbind_all();
-          channel.unsubscribe();
-          pusher.disconnect();
-        };
       } catch (error) {
-        console.error('Failed to connect to Kick:', error);
+        console.error('[Kick Overlay] Failed to connect:', error);
       }
     }
 
     connectToKick();
+
+    return () => {
+      if (channelInstance) {
+        channelInstance.unbind_all();
+        channelInstance.unsubscribe();
+      }
+      if (pusherInstance) {
+        pusherInstance.disconnect();
+      }
+    };
   }, [settings.channel]);
 
   // Size classes (1=small, 2=medium, 3=large)

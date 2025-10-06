@@ -16,7 +16,7 @@ function AnimatedMessage({ children, animate }) {
           animRef.current.style.height = measuredHeight + 'px';
         }
       });
-      const timer = setTimeout(() => setIsAnimating(false), 300);
+      const timer = setTimeout(() => setIsAnimating(false), 200);
       return () => clearTimeout(timer);
     }
   }, [animate]);
@@ -26,14 +26,33 @@ function AnimatedMessage({ children, animate }) {
     return (
       <>
         <div ref={auxRef} style={{ position: 'absolute', visibility: 'hidden', pointerEvents: 'none' }}>{children}</div>
-        <div ref={animRef} style={{ height: '0px', overflow: 'hidden', transition: 'height 300ms ease-out' }} />
+        <div 
+          ref={animRef} 
+          style={{ 
+            height: '0px', 
+            overflow: 'hidden', 
+            transition: 'height 200ms cubic-bezier(0.4, 0.0, 0.2, 1)'
+          }} 
+        />
       </>
     );
   }
   return <>{children}</>;
 }
 
-function parseMessage(text, channelEmotes = {}) {
+function parseMessage(text, channelData = null) {
+  // Build emote lookup from 7TV data
+  const channelEmotes = {};
+  if (channelData?.seventvEmotes) {
+    channelData.seventvEmotes.forEach(emote => {
+      const webpFiles = emote.data.host.files.filter(f => f.format === 'WEBP');
+      const maxFile = webpFiles[webpFiles.length - 1];
+      if (maxFile) {
+        channelEmotes[emote.name] = 'https:' + emote.data.host.url + '/' + maxFile.name;
+      }
+    });
+  }
+
   const emoteRegex = /\[emote:(\d+):([^\]]+)\]/g;
   const parts = [];
   let lastIndex = 0;
@@ -64,7 +83,7 @@ function parseMessage(text, channelEmotes = {}) {
     if (part.type === 'text') {
       const words = part.content.split(/(\s+)/);
       for (const word of words) {
-        if (word.trim() && channelEmotes[word]) {
+        if (channelEmotes[word]) {
           finalParts.push({
             type: 'emote',
             name: word,
@@ -86,8 +105,6 @@ export default function Overlay() {
   const router = useRouter();
   const [messages, setMessages] = useState([]);
   const [channelData, setChannelData] = useState(null);
-  const [channelEmotes, setChannelEmotes] = useState({});
-  const channelEmotesRef = useRef({});
   const [settings, setSettings] = useState({ 
     channel: 'xqc',
     animation: 'slide',
@@ -99,11 +116,6 @@ export default function Overlay() {
     smallCaps: false,
     hideNames: false
   });
-
-  // Keep ref in sync with state
-  useEffect(() => {
-    channelEmotesRef.current = channelEmotes;
-  }, [channelEmotes]);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -120,116 +132,55 @@ export default function Overlay() {
     });
   }, [router.isReady, router.query]);
 
+  // Load 7TV emotes
   useEffect(() => {
     if (!settings.channel) return;
 
-    let pusherInstance = null;
-    let channelInstance = null;
-
-    async function loadEmotes(channelSlug) {
-      const emotes = {};
-      
+    async function load7TVEmotes() {
       try {
-        console.log('[Kick Overlay] Loading emotes for:', channelSlug);
+        // First get the Twitch user ID from username
+        const twitchUserResponse = await fetch(`https://decapi.me/twitch/id/${settings.channel}`);
+        const twitchUserId = await twitchUserResponse.text();
         
-        // Load 7TV GLOBAL emotes (Kick-specific emotes don't work reliably)
-        try {
-          const stvGlobalResponse = await fetch('https://7tv.io/v3/emote-sets/global');
-          if (stvGlobalResponse.ok) {
-            const stvGlobalData = await stvGlobalResponse.json();
-            console.log('[Kick Overlay] 7TV global data:', stvGlobalData);
-            
-            if (stvGlobalData.emotes) {
-              stvGlobalData.emotes.forEach(emote => {
-                const webpFiles = emote.data.host.files.filter(f => f.format === 'WEBP');
-                const maxSize = webpFiles[webpFiles.length - 1]?.name || '4x.webp';
-                const emoteUrl = `https:${emote.data.host.url}/${maxSize}`;
-                emotes[emote.name] = emoteUrl;
-                console.log('[Kick Overlay] Added 7TV global emote:', emote.name);
-              });
-            }
-          }
-        } catch (e) {
-          console.warn('[Kick Overlay] 7TV global loading failed:', e);
+        if (!twitchUserId || twitchUserId.includes('User not found')) {
+          console.warn('Could not find Twitch user for 7TV emotes');
+          return;
         }
 
-        // Try loading channel-specific 7TV (might not work for Kick)
-        try {
-          const stvResponse = await fetch(`https://7tv.io/v3/users/kick/${channelSlug}`);
-          if (stvResponse.ok) {
-            const stvData = await stvResponse.json();
-            
-            if (stvData.emote_set?.emotes) {
-              stvData.emote_set.emotes.forEach(emote => {
-                const webpFiles = emote.data.host.files.filter(f => f.format === 'WEBP');
-                const maxSize = webpFiles[webpFiles.length - 1]?.name || '4x.webp';
-                const emoteUrl = `https:${emote.data.host.url}/${maxSize}`;
-                emotes[emote.name] = emoteUrl;
-                console.log('[Kick Overlay] Added 7TV channel emote:', emote.name);
-              });
-            }
-          }
-        } catch (e) {
-          console.warn('[Kick Overlay] 7TV channel loading failed (expected for Kick):', e);
-        }
-
-        // Load BTTV emotes
-        try {
-          const bttvResponse = await fetch(`https://api.betterttv.net/3/cached/users/kick/${channelSlug}`);
-          if (bttvResponse.ok) {
-            const bttvData = await bttvResponse.json();
-            [...(bttvData.channelEmotes || []), ...(bttvData.sharedEmotes || [])].forEach(emote => {
-              emotes[emote.code] = `https://cdn.betterttv.net/emote/${emote.id}/3x`;
-              console.log('[Kick Overlay] Added BTTV emote:', emote.code);
-            });
-          }
-        } catch (e) {
-          console.warn('[Kick Overlay] BTTV loading failed:', e);
-        }
-
-        // Load FFZ emotes
-        try {
-          const ffzResponse = await fetch(`https://api.betterttv.net/3/cached/frankerfacez/users/kick/${channelSlug}`);
-          if (ffzResponse.ok) {
-            const ffzData = await ffzResponse.json();
-            if (Array.isArray(ffzData)) {
-              ffzData.forEach(emote => {
-                const imageUrl = emote.images['4x'] || emote.images['2x'] || emote.images['1x'];
-                emotes[emote.code] = imageUrl;
-                console.log('[Kick Overlay] Added FFZ emote:', emote.code);
-              });
-            }
-          }
-        } catch (e) {
-          console.warn('[Kick Overlay] FFZ loading failed:', e);
+        // Then fetch 7TV emotes for that user
+        const stvResponse = await fetch(`https://7tv.io/v3/users/twitch/${twitchUserId}`);
+        const stvData = await stvResponse.json();
+        
+        if (stvData?.emote_set?.emotes) {
+          setChannelData(prev => ({
+            ...prev,
+            seventvEmotes: stvData.emote_set.emotes
+          }));
         }
       } catch (error) {
-        console.error('[Kick Overlay] Error loading emotes:', error);
+        console.error('Failed to load 7TV emotes:', error);
       }
-
-      console.log('[Kick Overlay] Total emotes loaded:', Object.keys(emotes).length);
-      setChannelEmotes(emotes);
-      channelEmotesRef.current = emotes;
     }
+
+    load7TVEmotes();
+  }, [settings.channel]);
+
+  useEffect(() => {
+    if (!settings.channel) return;
 
     async function connectToKick() {
       try {
         const response = await fetch(`https://kick.com/api/v2/channels/${settings.channel}`);
-        if (!response.ok) {
-          console.error('[Kick Overlay] Channel not found:', settings.channel);
-          return;
-        }
         const data = await response.json();
-        console.log('[Kick Overlay] Connected to:', data.slug, 'Chatroom ID:', data.chatroom.id);
-        setChannelData(data);
+        setChannelData(prev => ({
+          ...prev,
+          ...data
+        }));
 
-        // Load emotes FIRST
-        await loadEmotes(data.slug);
-
-        pusherInstance = new Pusher('32cbd69e4b950bf97679', { cluster: 'us2' });
-        channelInstance = pusherInstance.subscribe(`chatrooms.${data.chatroom.id}.v2`);
+        const pusher = new Pusher('32cbd69e4b950bf97679', { cluster: 'us2' });
+        const channel = pusher.subscribe(`chatrooms.${data.chatroom.id}.v2`);
         
-        channelInstance.bind('App\\Events\\ChatMessageEvent', (chatData) => {
+        channel.bind('App\\Events\\ChatMessageEvent', (chatData) => {
           const badgeElements = [];
           
           if (chatData.sender?.identity?.badges && Array.isArray(chatData.sender.identity.badges)) {
@@ -258,37 +209,30 @@ export default function Overlay() {
             });
           }
 
-          // Use ref to get current emotes
-          const currentEmotes = channelEmotesRef.current;
-          
           const newMessage = {
             id: chatData.id,
             username: chatData.sender.username,
             color: chatData.sender.identity.color || '#999999',
-            messageParts: parseMessage(chatData.content, currentEmotes),
+            messageParts: parseMessage(chatData.content, channelData),
             badges: badgeElements,
             timestamp: Date.now()
           };
 
           setMessages(prev => [...prev.slice(-49), newMessage]);
         });
+
+        return () => {
+          channel.unbind_all();
+          channel.unsubscribe();
+          pusher.disconnect();
+        };
       } catch (error) {
-        console.error('[Kick Overlay] Failed to connect:', error);
+        console.error('Failed to connect to Kick:', error);
       }
     }
 
     connectToKick();
-
-    return () => {
-      if (channelInstance) {
-        channelInstance.unbind_all();
-        channelInstance.unsubscribe();
-      }
-      if (pusherInstance) {
-        pusherInstance.disconnect();
-      }
-    };
-  }, [settings.channel]);
+  }, [settings.channel, channelData]);
 
   // Size classes (1=small, 2=medium, 3=large)
   const sizeMap = {

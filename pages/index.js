@@ -33,15 +33,17 @@ function AnimatedMessage({ children, animate }) {
   return <>{children}</>;
 }
 
-function parseMessage(text) {
+function parseMessage(text, channelEmotes = {}) {
   const emoteRegex = /\[emote:(\d+):([^\]]+)\]/g;
   const parts = [];
   let lastIndex = 0;
   let match;
 
+  // First, handle Kick's [emote:id:name] format
   while ((match = emoteRegex.exec(text)) !== null) {
     if (match.index > lastIndex) {
-      parts.push({ type: 'text', content: text.slice(lastIndex, match.index) });
+      const textPart = text.slice(lastIndex, match.index);
+      parts.push({ type: 'text', content: textPart });
     }
     parts.push({
       type: 'emote',
@@ -55,11 +57,32 @@ function parseMessage(text) {
   if (lastIndex < text.length) {
     parts.push({ type: 'text', content: text.slice(lastIndex) });
   }
+
+  // Then, handle plain text emotes (7TV, BTTV, FFZ)
+  const finalParts = [];
+  for (const part of parts) {
+    if (part.type === 'text') {
+      const words = part.content.split(/(\s+)/);
+      for (const word of words) {
+        if (channelEmotes[word]) {
+          finalParts.push({
+            type: 'emote',
+            name: word,
+            url: channelEmotes[word]
+          });
+        } else {
+          finalParts.push({ type: 'text', content: word });
+        }
+      }
+    } else {
+      finalParts.push(part);
+    }
+  }
   
-  return parts.length > 0 ? parts : [{ type: 'text', content: text }];
+  return finalParts.length > 0 ? finalParts : [{ type: 'text', content: text }];
 }
 
-export default function Home() {
+export default function Overlay() {
   const router = useRouter();
   const [messages, setMessages] = useState([]);
   const [channelData, setChannelData] = useState(null);

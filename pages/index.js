@@ -4,36 +4,60 @@ import Head from 'next/head';
 import Pusher from 'pusher-js';
 
 function AnimatedMessage({ children, animate }) {
-  const [isAnimating, setIsAnimating] = useState(animate);
-  const auxRef = useRef(null);
+  const [phase, setPhase] = useState(animate ? 'measuring' : 'done');
+  const measureRef = useRef(null);
   const animRef = useRef(null);
 
   useEffect(() => {
-    if (animate && auxRef.current) {
-      const measuredHeight = auxRef.current.offsetHeight;
+    if (!animate) return;
+    
+    if (phase === 'measuring' && measureRef.current) {
+      const height = measureRef.current.offsetHeight;
+      setPhase('animating');
+      
       requestAnimationFrame(() => {
         if (animRef.current) {
-          animRef.current.style.height = measuredHeight + 'px';
+          animRef.current.style.height = '0px';
+          requestAnimationFrame(() => {
+            if (animRef.current) {
+              animRef.current.style.height = height + 'px';
+            }
+          });
         }
       });
-      const timer = setTimeout(() => setIsAnimating(false), 150);
+      
+      const timer = setTimeout(() => setPhase('done'), 150);
       return () => clearTimeout(timer);
     }
-  }, [animate]);
+  }, [phase, animate]);
 
-  if (!animate) return <>{children}</>;
-  if (isAnimating) {
+  if (!animate || phase === 'done') {
+    return <>{children}</>;
+  }
+
+  if (phase === 'measuring') {
     return (
-      <>
-        <div ref={auxRef} style={{ position: 'absolute', visibility: 'hidden', pointerEvents: 'none' }}>{children}</div>
-        <div ref={animRef} style={{ height: '0px', overflow: 'hidden', transition: 'height 150ms ease-in-out' }} />
-      </>
+      <div ref={measureRef} style={{ visibility: 'hidden', position: 'absolute' }}>
+        {children}
+      </div>
     );
   }
-  return <>{children}</>;
+
+  return (
+    <div 
+      ref={animRef}
+      style={{
+        overflow: 'hidden',
+        transition: 'height 150ms ease-out',
+        willChange: 'height'
+      }}
+    >
+      {children}
+    </div>
+  );
 }
 
-function parseMessage(text) {
+function parseMessage(text, emoteMap = {}) {
   const emoteRegex = /\[emote:(\d+):([^\]]+)\]/g;
   const parts = [];
   let lastIndex = 0;
@@ -55,14 +79,35 @@ function parseMessage(text) {
   if (lastIndex < text.length) {
     parts.push({ type: 'text', content: text.slice(lastIndex) });
   }
+
+  const finalParts = [];
+  for (const part of parts) {
+    if (part.type === 'text') {
+      const words = part.content.split(/(\s+)/);
+      for (const word of words) {
+        if (emoteMap[word]) {
+          finalParts.push({
+            type: 'emote',
+            name: word,
+            url: emoteMap[word]
+          });
+        } else {
+          finalParts.push({ type: 'text', content: word });
+        }
+      }
+    } else {
+      finalParts.push(part);
+    }
+  }
   
-  return parts.length > 0 ? parts : [{ type: 'text', content: text }];
+  return finalParts.length > 0 ? finalParts : [{ type: 'text', content: text }];
 }
 
-export default function Home() {
+export default function Overlay() {
   const router = useRouter();
   const [messages, setMessages] = useState([]);
   const [channelData, setChannelData] = useState(null);
+  const [emoteMap, setEmoteMap] = useState({});
   const [settings, setSettings] = useState({ 
     channel: 'xqc',
     animation: 'slide',
@@ -89,6 +134,216 @@ export default function Home() {
       hideNames: router.query.hideNames === 'true'
     });
   }, [router.isReady, router.query]);
+
+  useEffect(() => {
+    if (!settings.channel) return;
+
+    async function loadEmotes() {
+      const newEmoteMap = {};
+      
+      try {
+        // Method 1: Try to get 7TV user by searching with display name
+        // This is how 7TV extension works - it searches for users
+        try {
+          const searchResponse = await fetch(
+            `https://7tv.io/v3/gql`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                query: `
+                  query SearchUsers($query: String!) {
+                    users(query: $query) {
+                      items {
+                        id
+                        username
+                        display_name
+                        connections {
+                          id
+                          platform
+                          username
+                          display_name
+                        }
+                      }
+                    }
+                  }
+                `,
+                variables: {
+                  query: settings.channel
+                }
+              })
+            }
+          );
+
+          if (searchResponse.ok) {
+            const searchData = await searchResponse.json();
+            const users = searchData?.data?.users?.items || [];
+            
+            // Find user with matching Twitch connection
+            let userId = null;
+            for (const user of users) {
+              const twitchConn = user.connections?.find(
+                c => c.platform === 'TWITCH' && 
+                     c.username.toLowerCase() === settings.channel.toLowerCase()
+              );
+              if (twitchConn) {
+                userId = user.id;
+                break;
+              }
+            }
+
+            if (userId) {
+              // Fetch user's emote set
+              const userResponse = await fetch(`https://7tv.io/v3/users/${userId}`);
+              if (userResponse.ok) {
+                const userData = await userResponse.json();
+                if (userData?.emote_set?.emotes) {
+                  userData.emote_set.emotes.forEach(emote => {
+                    const files = emote.data?.host?.files || [];
+                    const webpFile = files.find(f => f.name === '4x.webp') || 
+                                   files.find(f => f.name === '3x.webp') ||
+                                   files[files.length - 1];
+                    if (webpFile && emote.data?.host?.url) {
+                      newEmoteMap[emote.name] = `https:${emote.data.host.url}/${webpFile.name}`;
+                    }
+                  });
+                  console.log('Loaded 7TV emotes via GraphQL search:', Object.keys(newEmoteMap).length);
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('7TV GraphQL search failed:', e);
+        }
+
+        // Method 2: Fallback - try direct Twitch ID lookup (for xQc case where Twitch name = Kick name)
+        if (Object.keys(newEmoteMap).length === 0) {
+          try {
+            // Get Twitch user ID
+            const twitchResponse = await fetch(
+              `https://api.ivr.fi/v2/twitch/user?login=${settings.channel}`
+            );
+            
+            if (twitchResponse.ok) {
+              const twitchData = await twitchResponse.json();
+              const twitchId = twitchData?.[0]?.id;
+              
+              if (twitchId) {
+                // Try to get 7TV emotes via Twitch ID
+                const stvResponse = await fetch(`https://7tv.io/v3/users/twitch/${twitchId}`);
+                if (stvResponse.ok) {
+                  const stvData = await stvResponse.json();
+                  if (stvData?.emote_set?.emotes) {
+                    stvData.emote_set.emotes.forEach(emote => {
+                      const files = emote.data?.host?.files || [];
+                      const webpFile = files.find(f => f.name === '4x.webp') || 
+                                     files.find(f => f.name === '3x.webp') ||
+                                     files[files.length - 1];
+                      if (webpFile && emote.data?.host?.url) {
+                        newEmoteMap[emote.name] = `https:${emote.data.host.url}/${webpFile.name}`;
+                      }
+                    });
+                    console.log('Loaded 7TV emotes via Twitch ID:', Object.keys(newEmoteMap).length);
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            console.warn('7TV Twitch ID lookup failed:', e);
+          }
+        }
+
+        // Load 7TV global emotes
+        try {
+          const globalResponse = await fetch('https://7tv.io/v3/emote-sets/global');
+          if (globalResponse.ok) {
+            const globalData = await globalResponse.json();
+            if (globalData?.emotes) {
+              globalData.emotes.forEach(emote => {
+                // Don't override channel emotes with global ones
+                if (!newEmoteMap[emote.name]) {
+                  const files = emote.data?.host?.files || [];
+                  const webpFile = files.find(f => f.name === '4x.webp') || 
+                                 files.find(f => f.name === '3x.webp') ||
+                                 files[files.length - 1];
+                  if (webpFile && emote.data?.host?.url) {
+                    newEmoteMap[emote.name] = `https:${emote.data.host.url}/${webpFile.name}`;
+                  }
+                }
+              });
+              console.log('Loaded 7TV global emotes');
+            }
+          }
+        } catch (e) {
+          console.warn('7TV global emotes failed:', e);
+        }
+
+        // Load BTTV emotes
+        try {
+          // Try channel emotes
+          const bttvChannelResponse = await fetch(
+            `https://api.betterttv.net/3/cached/users/twitch/${settings.channel}`
+          );
+          if (bttvChannelResponse.ok) {
+            const bttvData = await bttvChannelResponse.json();
+            [...(bttvData.channelEmotes || []), ...(bttvData.sharedEmotes || [])].forEach(emote => {
+              if (!newEmoteMap[emote.code]) {
+                newEmoteMap[emote.code] = `https://cdn.betterttv.net/emote/${emote.id}/3x`;
+              }
+            });
+            console.log('Loaded BTTV emotes');
+          }
+        } catch (e) {
+          console.warn('BTTV fetch failed:', e);
+        }
+
+        // Load BTTV global emotes
+        try {
+          const bttvGlobalResponse = await fetch('https://api.betterttv.net/3/cached/emotes/global');
+          if (bttvGlobalResponse.ok) {
+            const bttvGlobal = await bttvGlobalResponse.json();
+            bttvGlobal.forEach(emote => {
+              if (!newEmoteMap[emote.code]) {
+                newEmoteMap[emote.code] = `https://cdn.betterttv.net/emote/${emote.id}/3x`;
+              }
+            });
+            console.log('Loaded BTTV global emotes');
+          }
+        } catch (e) {
+          console.warn('BTTV global fetch failed:', e);
+        }
+
+        // Load FFZ emotes
+        try {
+          const ffzResponse = await fetch(
+            `https://api.betterttv.net/3/cached/frankerfacez/users/twitch/${settings.channel}`
+          );
+          if (ffzResponse.ok) {
+            const ffzData = await ffzResponse.json();
+            ffzData.forEach(emote => {
+              if (!newEmoteMap[emote.code]) {
+                const url = emote.images['4x'] || emote.images['2x'] || emote.images['1x'];
+                if (url) newEmoteMap[emote.code] = url;
+              }
+            });
+            console.log('Loaded FFZ emotes');
+          }
+        } catch (e) {
+          console.warn('FFZ fetch failed:', e);
+        }
+
+        console.log('Total emotes loaded:', Object.keys(newEmoteMap).length);
+        setEmoteMap(newEmoteMap);
+        
+      } catch (error) {
+        console.error('Failed to load emotes:', error);
+      }
+    }
+
+    loadEmotes();
+  }, [settings.channel]);
 
   useEffect(() => {
     if (!settings.channel) return;
@@ -135,7 +390,7 @@ export default function Home() {
             id: chatData.id,
             username: chatData.sender.username,
             color: chatData.sender.identity.color || '#999999',
-            messageParts: parseMessage(chatData.content),
+            messageParts: parseMessage(chatData.content, emoteMap),
             badges: badgeElements,
             timestamp: Date.now()
           };
@@ -154,16 +409,14 @@ export default function Home() {
     }
 
     connectToKick();
-  }, [settings.channel]);
+  }, [settings.channel, emoteMap]);
 
-  // Size classes (1=small, 2=medium, 3=large)
   const sizeMap = {
     1: { container: 'text-2xl', emote: 'max-h-[25px]' },
     2: { container: 'text-4xl', emote: 'max-h-[42px]' },
     3: { container: 'text-5xl', emote: 'max-h-[60px]' }
   };
 
-  // Font families (0-11 + custom)
   const fontMap = {
     0: "'Baloo Thambi', cursive",
     1: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
@@ -179,7 +432,6 @@ export default function Home() {
     11: "'Alsina Ultrajada', fantasy"
   };
 
-  // Stroke thickness (1=thin, 2=medium, 3=thick, 4=thicker)
   const getStrokeStyle = (thickness) => {
     if (!thickness) return {};
     const widths = { 1: 1, 2: 2, 3: 3, 4: 4 };
@@ -189,7 +441,6 @@ export default function Home() {
     };
   };
 
-  // Shadow size (1=small, 2=medium, 3=large)
   const getShadowStyle = (size) => {
     if (!size) return '';
     const shadows = {
@@ -217,7 +468,7 @@ export default function Home() {
       <Head><title>Kick Chat Overlay - {settings.channel}</title></Head>
       <div className="min-h-screen w-full">
         <div 
-          className={`absolute bottom-0 left-0 w-full overflow-hidden text-white`}
+          className="absolute bottom-0 left-0 w-full overflow-hidden text-white"
           style={{
             ...containerStyle,
             width: 'calc(100% - 20px)',

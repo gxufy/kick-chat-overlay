@@ -155,7 +155,6 @@ export default function Overlay() {
       const newEmoteMap = {};
       
       try {
-        // Method 1: Try to get 7TV user by searching with display name
         try {
           const searchResponse = await fetch(
             `https://7tv.io/v3/gql`,
@@ -228,7 +227,6 @@ export default function Overlay() {
           console.warn('7TV GraphQL search failed:', e);
         }
 
-        // Method 2: Fallback - try direct Twitch ID lookup
         if (Object.keys(newEmoteMap).length === 0) {
           try {
             const twitchResponse = await fetch(
@@ -263,7 +261,6 @@ export default function Overlay() {
           }
         }
 
-        // Load 7TV global emotes
         try {
           const globalResponse = await fetch('https://7tv.io/v3/emote-sets/global');
           if (globalResponse.ok) {
@@ -287,7 +284,6 @@ export default function Overlay() {
           console.warn('7TV global emotes failed:', e);
         }
 
-        // Load BTTV emotes
         try {
           const bttvChannelResponse = await fetch(
             `https://api.betterttv.net/3/cached/users/twitch/${settings.channel}`
@@ -305,7 +301,6 @@ export default function Overlay() {
           console.warn('BTTV fetch failed:', e);
         }
 
-        // Load BTTV global emotes
         try {
           const bttvGlobalResponse = await fetch('https://api.betterttv.net/3/cached/emotes/global');
           if (bttvGlobalResponse.ok) {
@@ -321,7 +316,6 @@ export default function Overlay() {
           console.warn('BTTV global fetch failed:', e);
         }
 
-        // Load FFZ emotes
         try {
           const ffzResponse = await fetch(
             `https://api.betterttv.net/3/cached/frankerfacez/users/twitch/${settings.channel}`
@@ -436,9 +430,9 @@ export default function Overlay() {
   }, [settings.channel]);
 
   const sizeMap = {
-    1: { container: 'text-2xl', emote: 'max-h-[25px]' },
-    2: { container: 'text-4xl', emote: 'max-h-[42px]' },
-    3: { container: 'text-5xl', emote: 'max-h-[60px]' }
+    1: { emoteHeight: 25 },
+    2: { emoteHeight: 42 },
+    3: { emoteHeight: 60 }
   };
 
   const fontMap = {
@@ -478,7 +472,7 @@ export default function Overlay() {
   const containerStyle = {
     fontFamily: settings.fontCustom || fontMap[settings.font] || fontMap[0],
     fontSize: '48px',
-    lineHeight: '1.6',
+    lineHeight: '1.3',
     fontWeight: 800,
     ...getStrokeStyle(settings.stroke),
     ...(settings.shadow && { filter: getShadowStyle(settings.shadow) }),
@@ -486,6 +480,7 @@ export default function Overlay() {
   };
 
   const currentSize = sizeMap[settings.size] || sizeMap[3];
+  const badgeSize = currentSize.emoteHeight * 0.75;
 
   return (
     <>
@@ -502,11 +497,8 @@ export default function Overlay() {
           {messages.map((msg, index) => (
             <AnimatedMessage key={msg.id} animate={settings.animation === 'slide' && index === messages.length - 1}>
               <div style={{ 
-                display: 'flex',
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                marginBottom: '8px',
-                minHeight: '60px'
+                wordWrap: 'break-word',
+                marginBottom: '4px'
               }}>
                 {msg.badges?.length > 0 && (
                   <>
@@ -516,13 +508,11 @@ export default function Overlay() {
                         src={badge.url} 
                         alt="badge"
                         style={{
-                          width: '40px',
-                          height: '40px',
+                          height: `${badgeSize}px`,
                           verticalAlign: 'middle',
                           borderRadius: '10%',
-                          marginRight: '8px',
-                          display: 'inline-block',
-                          flexShrink: 0
+                          marginRight: '4px',
+                          display: 'inline-block'
                         }}
                       />
                     ))}
@@ -530,42 +520,36 @@ export default function Overlay() {
                 )}
                 {!settings.hideNames && (
                   <>
-                    <span style={{ 
-                      color: msg.color,
-                      marginRight: '4px',
-                      flexShrink: 0
-                    }}>
+                    <span style={{ color: msg.color }}>
                       {msg.username}
                     </span>
-                    <span style={{ marginRight: '8px', flexShrink: 0 }}>: </span>
+                    <span>: </span>
                   </>
                 )}
-                <span style={{ 
-                  display: 'inline',
-                  wordBreak: 'break-word',
-                  overflowWrap: 'break-word',
-                  flex: '1 1 auto',
-                  minWidth: 0
-                }}>
+                <span>
                   {msg.messageParts.map((part, i) => 
                     part.type === 'emote' ? (
-                      <img 
+                      <span 
                         key={i}
-                        src={part.url}
-                        alt={part.name}
                         style={{
-                          maxHeight: currentSize.emote === 'max-h-[25px]' ? '25px' :
-                                    currentSize.emote === 'max-h-[42px]' ? '42px' : '60px',
-                          height: 'auto',
-                          width: 'auto',
-                          verticalAlign: 'middle',
                           display: 'inline-block',
-                          marginRight: '4px',
-                          marginLeft: '2px'
+                          verticalAlign: 'middle',
+                          lineHeight: 0,
+                          margin: '0 2px'
                         }}
-                      />
+                      >
+                        <img 
+                          src={part.url}
+                          alt={part.name}
+                          style={{
+                            height: `${currentSize.emoteHeight}px`,
+                            display: 'inline-block',
+                            verticalAlign: 'middle'
+                          }}
+                        />
+                      </span>
                     ) : (
-                      <span key={i} style={{ display: 'inline' }}>{part.content}</span>
+                      <span key={i}>{part.content}</span>
                     )
                   )}
                 </span>

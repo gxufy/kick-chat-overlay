@@ -33,8 +33,8 @@ function AnimatedMessage({ children, animate }) {
           }
         });
         
-        timerRef.current = setTimeout(() => setPhase('done'), 150);
-      }, 100); // 100ms delay to batch messages together
+        timerRef.current = setTimeout(() => setPhase('done'), 120);
+      }, 50); // Reduced delay for more immediate response
     }
 
     return () => {
@@ -61,7 +61,7 @@ function AnimatedMessage({ children, animate }) {
       ref={animRef}
       style={{
         overflow: 'hidden',
-        transition: 'height 150ms ease-out',
+        transition: 'height 120ms cubic-bezier(0.4, 0, 0.2, 1)',
         willChange: 'height',
         marginBottom: '4px'
       }}
@@ -136,8 +136,12 @@ export default function Overlay() {
 
   useEffect(() => {
     if (!router.isReady) return;
+    
+    const newChannel = router.query.channel || 'xqc';
+    console.log('URL channel parameter:', newChannel);
+    
     setSettings({
-      channel: router.query.channel || 'xqc',
+      channel: newChannel,
       animation: router.query.animation || 'slide',
       size: parseInt(router.query.size) || 3,
       font: parseInt(router.query.font) || 0,
@@ -367,15 +371,30 @@ export default function Overlay() {
 
   useEffect(() => {
     if (!settings.channel) return;
+    
+    console.log('Connecting to Kick channel:', settings.channel);
+    
+    // Clear previous messages when channel changes
+    setMessages([]);
+
+    let pusher = null;
+    let channel = null;
 
     async function connectToKick() {
       try {
         const response = await fetch(`https://kick.com/api/v2/channels/${settings.channel}`);
+        
+        if (!response.ok) {
+          console.error('Failed to fetch channel:', settings.channel, 'Status:', response.status);
+          return;
+        }
+        
         const data = await response.json();
+        console.log('Connected to:', data.slug, 'Chatroom ID:', data.chatroom.id);
         setChannelData(data);
 
-        const pusher = new Pusher('32cbd69e4b950bf97679', { cluster: 'us2' });
-        const channel = pusher.subscribe(`chatrooms.${data.chatroom.id}.v2`);
+        pusher = new Pusher('32cbd69e4b950bf97679', { cluster: 'us2' });
+        channel = pusher.subscribe(`chatrooms.${data.chatroom.id}.v2`);
         
         channel.bind('App\\Events\\ChatMessageEvent', (chatData) => {
           const badgeElements = [];
@@ -418,23 +437,28 @@ export default function Overlay() {
           setMessages(prev => [...prev.slice(-49), newMessage]);
         });
 
-        return () => {
-          channel.unbind_all();
-          channel.unsubscribe();
-          pusher.disconnect();
-        };
       } catch (error) {
-        console.error('Failed to connect to Kick:', error);
+        console.error('Failed to connect to Kick:', settings.channel, error);
       }
     }
 
     connectToKick();
+    
+    return () => {
+      if (channel) {
+        channel.unbind_all();
+        channel.unsubscribe();
+      }
+      if (pusher) {
+        pusher.disconnect();
+      }
+    };
   }, [settings.channel]);
 
   const sizeMap = {
-    1: { container: 'text-2xl', emote: 'max-h-[25px]' },
-    2: { container: 'text-4xl', emote: 'max-h-[42px]' },
-    3: { container: 'text-5xl', emote: 'max-h-[60px]' }
+    1: { container: 'text-2xl', emote: 'max-h-[25px]', maxWidth: '25px' },
+    2: { container: 'text-4xl', emote: 'max-h-[42px]', maxWidth: '42px' },
+    3: { container: 'text-5xl', emote: 'max-h-[60px]', maxWidth: '60px' }
   };
 
   const fontMap = {
@@ -474,7 +498,7 @@ export default function Overlay() {
   const containerStyle = {
     fontFamily: settings.fontCustom || fontMap[settings.font] || fontMap[0],
     fontSize: '48px',
-    lineHeight: '75px',
+    lineHeight: '1.6',
     fontWeight: 800,
     ...getStrokeStyle(settings.stroke),
     ...(settings.shadow && { filter: getShadowStyle(settings.shadow) }),
@@ -497,50 +521,77 @@ export default function Overlay() {
         >
           {messages.map((msg, index) => (
             <AnimatedMessage key={msg.id} animate={settings.animation === 'slide' && index === messages.length - 1}>
-              <div style={{ lineHeight: '75px' }}>
-                <span style={{ display: 'inline' }}>
-                  {msg.badges?.length > 0 && (
-                    <>
-                      {msg.badges.map((badge, i) => (
-                        <img 
-                          key={i} 
-                          src={badge.url} 
-                          alt="badge"
-                          style={{
-                            width: '40px',
-                            height: '40px',
-                            verticalAlign: 'middle',
-                            borderRadius: '10%',
-                            marginRight: i === msg.badges.length - 1 ? '8px' : '5px',
-                            marginBottom: '8px',
-                            display: 'inline-block'
-                          }}
-                        />
-                      ))}
-                    </>
-                  )}
-                  {!settings.hideNames && (
-                    <>
-                      <span style={{ color: msg.color }}>
-                        {msg.username}
+              <div style={{ 
+                lineHeight: '1.6',
+                display: 'flex',
+                alignItems: 'center',
+                flexWrap: 'wrap'
+              }}>
+                {msg.badges?.length > 0 && (
+                  <>
+                    {msg.badges.map((badge, i) => (
+                      <img 
+                        key={i} 
+                        src={badge.url} 
+                        alt="badge"
+                        style={{
+                          width: '40px',
+                          height: '40px',
+                          verticalAlign: 'middle',
+                          borderRadius: '10%',
+                          marginRight: i === msg.badges.length - 1 ? '8px' : '5px',
+                          marginBottom: '2px',
+                          display: 'inline-block',
+                          flexShrink: 0
+                        }}
+                      />
+                    ))}
+                  </>
+                )}
+                {!settings.hideNames && (
+                  <>
+                    <span style={{ 
+                      color: msg.color,
+                      marginRight: '4px',
+                      flexShrink: 0
+                    }}>
+                      {msg.username}
+                    </span>
+                    <span style={{ marginRight: '6px', flexShrink: 0 }}>:</span>
+                  </>
+                )}
+                <span style={{ 
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '2px'
+                }}>
+                  {msg.messageParts.map((part, i) => 
+                    part.type === 'emote' ? (
+                      <img 
+                        key={i}
+                        src={part.url}
+                        alt={part.name}
+                        style={{
+                          maxHeight: currentSize.emote.replace('max-h-[', '').replace(']', ''),
+                          maxWidth: currentSize.maxWidth,
+                          height: 'auto',
+                          width: 'auto',
+                          verticalAlign: 'middle',
+                          display: 'inline-block',
+                          marginRight: '2px',
+                          objectFit: 'contain'
+                        }}
+                      />
+                    ) : (
+                      <span key={i} style={{ 
+                        display: 'inline',
+                        wordBreak: 'break-word'
+                      }}>
+                        {part.content}
                       </span>
-                      <span className="colon">: </span>
-                    </>
+                    )
                   )}
-                  <span style={{ wordBreak: 'break-word' }}>
-                    {msg.messageParts.map((part, i) => 
-                      part.type === 'emote' ? (
-                        <img 
-                          key={i}
-                          src={part.url}
-                          alt={part.name}
-                          className={`inline-flex ${currentSize.emote} h-auto w-auto pr-1`}
-                        />
-                      ) : (
-                        <span key={i}>{part.content}</span>
-                      )
-                    )}
-                  </span>
                 </span>
               </div>
             </AnimatedMessage>

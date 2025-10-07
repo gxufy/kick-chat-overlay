@@ -7,9 +7,13 @@ function AnimatedMessage({ children, animate }) {
   const [phase, setPhase] = useState(animate ? 'measuring' : 'done');
   const measureRef = useRef(null);
   const animRef = useRef(null);
+  const timerRef = useRef(null);
 
   useEffect(() => {
-    if (!animate) return;
+    if (!animate) {
+      setPhase('done');
+      return;
+    }
     
     if (phase === 'measuring' && measureRef.current) {
       const height = measureRef.current.offsetHeight;
@@ -26,18 +30,23 @@ function AnimatedMessage({ children, animate }) {
         }
       });
       
-      const timer = setTimeout(() => setPhase('done'), 150);
-      return () => clearTimeout(timer);
+      timerRef.current = setTimeout(() => setPhase('done'), 150);
     }
+
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+    };
   }, [phase, animate]);
 
   if (!animate || phase === 'done') {
-    return <>{children}</>;
+    return <div style={{ marginBottom: '4px' }}>{children}</div>;
   }
 
   if (phase === 'measuring') {
     return (
-      <div ref={measureRef} style={{ visibility: 'hidden', position: 'absolute' }}>
+      <div ref={measureRef} style={{ visibility: 'hidden', position: 'absolute', pointerEvents: 'none' }}>
         {children}
       </div>
     );
@@ -49,7 +58,8 @@ function AnimatedMessage({ children, animate }) {
       style={{
         overflow: 'hidden',
         transition: 'height 150ms ease-out',
-        willChange: 'height'
+        willChange: 'height',
+        marginBottom: '4px'
       }}
     >
       {children}
@@ -345,6 +355,12 @@ export default function Overlay() {
     loadEmotes();
   }, [settings.channel]);
 
+  const emoteMapRef = useRef({});
+  
+  useEffect(() => {
+    emoteMapRef.current = emoteMap;
+  }, [emoteMap]);
+
   useEffect(() => {
     if (!settings.channel) return;
 
@@ -390,7 +406,7 @@ export default function Overlay() {
             id: chatData.id,
             username: chatData.sender.username,
             color: chatData.sender.identity.color || '#999999',
-            messageParts: parseMessage(chatData.content, emoteMap),
+            messageParts: parseMessage(chatData.content, emoteMapRef.current),
             badges: badgeElements,
             timestamp: Date.now()
           };
@@ -409,7 +425,7 @@ export default function Overlay() {
     }
 
     connectToKick();
-  }, [settings.channel, emoteMap]);
+  }, [settings.channel]);
 
   const sizeMap = {
     1: { container: 'text-2xl', emote: 'max-h-[25px]' },

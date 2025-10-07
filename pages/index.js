@@ -17,20 +17,24 @@ function AnimatedMessage({ children, animate }) {
     
     if (phase === 'measuring' && measureRef.current) {
       const height = measureRef.current.offsetHeight;
-      setPhase('animating');
       
-      requestAnimationFrame(() => {
-        if (animRef.current) {
-          animRef.current.style.height = '0px';
-          requestAnimationFrame(() => {
-            if (animRef.current) {
-              animRef.current.style.height = height + 'px';
-            }
-          });
-        }
-      });
-      
-      timerRef.current = setTimeout(() => setPhase('done'), 150);
+      // Delay before starting animation to batch multiple messages
+      timerRef.current = setTimeout(() => {
+        setPhase('animating');
+        
+        requestAnimationFrame(() => {
+          if (animRef.current) {
+            animRef.current.style.height = '0px';
+            requestAnimationFrame(() => {
+              if (animRef.current) {
+                animRef.current.style.height = height + 'px';
+              }
+            });
+          }
+        });
+        
+        timerRef.current = setTimeout(() => setPhase('done'), 150);
+      }, 100); // 100ms delay to batch messages together
     }
 
     return () => {
@@ -132,8 +136,7 @@ export default function Overlay() {
 
   useEffect(() => {
     if (!router.isReady) return;
-    
-    const newSettings = {
+    setSettings({
       channel: router.query.channel || 'xqc',
       animation: router.query.animation || 'slide',
       size: parseInt(router.query.size) || 3,
@@ -143,14 +146,11 @@ export default function Overlay() {
       shadow: parseInt(router.query.shadow) || 0,
       smallCaps: router.query.smallCaps === 'true',
       hideNames: router.query.hideNames === 'true'
-    };
-    
-    setSettings(newSettings);
+    });
   }, [router.isReady, router.query]);
 
-  // Load emotes only when channel is properly set
   useEffect(() => {
-    if (!settings.channel || !router.isReady) return;
+    if (!settings.channel) return;
 
     async function loadEmotes() {
       const newEmoteMap = {};
@@ -365,27 +365,6 @@ export default function Overlay() {
     emoteMapRef.current = emoteMap;
   }, [emoteMap]);
 
-  // Message batching system - processes queue every 200ms
-  useEffect(() => {
-    const processQueue = () => {
-      if (messageQueueRef.current.length > 0 && !processingRef.current) {
-        processingRef.current = true;
-        
-        const messagesToAdd = [...messageQueueRef.current];
-        messageQueueRef.current = [];
-        
-        setMessages(prev => [...prev.slice(-(50 - messagesToAdd.length)), ...messagesToAdd]);
-        
-        setTimeout(() => {
-          processingRef.current = false;
-        }, 200); // Match animation duration + batch delay
-      }
-    };
-
-    const interval = setInterval(processQueue, 200);
-    return () => clearInterval(interval);
-  }, []);
-
   useEffect(() => {
     if (!settings.channel) return;
 
@@ -436,8 +415,7 @@ export default function Overlay() {
             timestamp: Date.now()
           };
 
-          // Add to queue instead of directly to state
-          messageQueueRef.current.push(newMessage);
+          setMessages(prev => [...prev.slice(-49), newMessage]);
         });
 
         return () => {

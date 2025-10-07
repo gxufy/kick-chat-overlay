@@ -3,16 +3,28 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Pusher from 'pusher-js';
 
-function AnimatedMessage({ children, animate }) {
-  const [phase, setPhase] = useState(animate ? 'measuring' : 'done');
+function AnimatedMessage({ children, animate, animIndex }) {
+  const [phase, setPhase] = useState('waiting');
   const measureRef = useRef(null);
   const animRef = useRef(null);
   const timerRef = useRef(null);
+  const startDelayRef = useRef(animIndex * 50); // 50ms delay between each message
 
   useEffect(() => {
     if (!animate) {
       setPhase('done');
       return;
+    }
+
+    // Wait for stagger delay before starting
+    if (phase === 'waiting') {
+      timerRef.current = setTimeout(() => {
+        setPhase('measuring');
+      }, startDelayRef.current);
+      
+      return () => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+      };
     }
     
     if (phase === 'measuring' && measureRef.current) {
@@ -38,17 +50,20 @@ function AnimatedMessage({ children, animate }) {
         clearTimeout(timerRef.current);
       }
     };
-  }, [phase, animate]);
+  }, [phase, animate, animIndex]);
 
   if (!animate || phase === 'done') {
-    return <div style={{ marginBottom: '4px' }}>{children}</div>;
+    return <div style={{ marginBottom: '2px' }}>{children}</div>;
   }
 
-  if (phase === 'measuring') {
+  if (phase === 'waiting' || phase === 'measuring') {
     return (
-      <div ref={measureRef} style={{ visibility: 'hidden', position: 'absolute', pointerEvents: 'none' }}>
-        {children}
-      </div>
+      <>
+        <div ref={measureRef} style={{ visibility: 'hidden', position: 'absolute', pointerEvents: 'none' }}>
+          {children}
+        </div>
+        {phase === 'waiting' && <div style={{ height: '0px', marginBottom: '2px' }} />}
+      </>
     );
   }
 
@@ -57,9 +72,9 @@ function AnimatedMessage({ children, animate }) {
       ref={animRef}
       style={{
         overflow: 'hidden',
-        transition: 'height 150ms ease-out',
+        transition: 'height 150ms cubic-bezier(0.4, 0.0, 0.6, 1)',
         willChange: 'height',
-        marginBottom: '4px'
+        marginBottom: '2px'
       }}
     >
       {children}
@@ -148,8 +163,9 @@ export default function Overlay() {
     setSettings(newSettings);
   }, [router.isReady, router.query]);
 
+  // Load emotes only when channel is properly set
   useEffect(() => {
-    if (!settings.channel) return;
+    if (!settings.channel || !router.isReady) return;
 
     async function loadEmotes() {
       const newEmoteMap = {};
@@ -364,8 +380,10 @@ export default function Overlay() {
     emoteMapRef.current = emoteMap;
   }, [emoteMap]);
 
-  // Message batching system - processes queue every 200ms
+  // Message batching system with sequential animation
   useEffect(() => {
+    let animationIndex = 0;
+    
     const processQueue = () => {
       if (messageQueueRef.current.length > 0 && !processingRef.current) {
         processingRef.current = true;
@@ -373,11 +391,19 @@ export default function Overlay() {
         const messagesToAdd = [...messageQueueRef.current];
         messageQueueRef.current = [];
         
-        setMessages(prev => [...prev.slice(-(50 - messagesToAdd.length)), ...messagesToAdd]);
+        // Add messages with staggered animation indices
+        const messagesWithAnimIndex = messagesToAdd.map((msg, idx) => ({
+          ...msg,
+          animIndex: animationIndex + idx
+        }));
+        
+        animationIndex += messagesToAdd.length;
+        
+        setMessages(prev => [...prev.slice(-(50 - messagesWithAnimIndex.length)), ...messagesWithAnimIndex]);
         
         setTimeout(() => {
           processingRef.current = false;
-        }, 200); // Match animation duration + batch delay
+        }, 50); // Reduced from 200ms for tighter batching
       }
     };
 
@@ -450,7 +476,7 @@ export default function Overlay() {
     }
 
     connectToKick();
-  }, [settings.channel]);
+  }, [settings.channel, router.isReady]);
 
   const sizeMap = {
     1: { container: 'text-2xl', emote: 'max-h-[25px]' },
@@ -495,7 +521,7 @@ export default function Overlay() {
   const containerStyle = {
     fontFamily: settings.fontCustom || fontMap[settings.font] || fontMap[0],
     fontSize: '48px',
-    lineHeight: '75px',
+    lineHeight: '1.2',
     fontWeight: 800,
     ...getStrokeStyle(settings.stroke),
     ...(settings.shadow && { filter: getShadowStyle(settings.shadow) }),
@@ -517,48 +543,74 @@ export default function Overlay() {
           }}
         >
           {messages.map((msg, index) => (
-            <AnimatedMessage key={msg.id} animate={settings.animation === 'slide' && index === messages.length - 1}>
-              <div style={{ lineHeight: '75px' }}>
-                <span style={{ display: 'inline' }}>
+            <AnimatedMessage 
+              key={msg.id} 
+              animate={settings.animation === 'slide' && index === messages.length - 1} 
+              animIndex={msg.animIndex || 0}
+            >
+              <div style={{ 
+                lineHeight: '1.2',
+                display: 'flex',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                minHeight: '48px'
+              }}>
+                <span style={{ 
+                  display: 'flex',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '4px'
+                }}>
                   {msg.badges?.length > 0 && (
-                    <>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
                       {msg.badges.map((badge, i) => (
                         <img 
                           key={i} 
                           src={badge.url} 
                           alt="badge"
                           style={{
-                            width: '40px',
-                            height: '40px',
+                            width: '28px',
+                            height: '28px',
                             verticalAlign: 'middle',
                             borderRadius: '10%',
-                            marginRight: i === msg.badges.length - 1 ? '8px' : '5px',
-                            marginBottom: '8px',
-                            display: 'inline-block'
+                            display: 'inline-block',
+                            flexShrink: 0
                           }}
                         />
                       ))}
-                    </>
+                    </span>
                   )}
                   {!settings.hideNames && (
-                    <>
-                      <span style={{ color: msg.color }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                      <span style={{ color: msg.color, whiteSpace: 'nowrap' }}>
                         {msg.username}
                       </span>
-                      <span className="colon">: </span>
-                    </>
+                      <span className="colon">:</span>
+                    </span>
                   )}
-                  <span style={{ wordBreak: 'break-word' }}>
+                  <span style={{ 
+                    wordBreak: 'break-word',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '4px'
+                  }}>
                     {msg.messageParts.map((part, i) => 
                       part.type === 'emote' ? (
                         <img 
                           key={i}
                           src={part.url}
                           alt={part.name}
-                          className={`inline-flex ${currentSize.emote} h-auto w-auto pr-1`}
+                          className={`${currentSize.emote}`}
+                          style={{
+                            display: 'inline-block',
+                            verticalAlign: 'middle',
+                            height: 'auto',
+                            width: 'auto'
+                          }}
                         />
                       ) : (
-                        <span key={i}>{part.content}</span>
+                        <span key={i} style={{ display: 'inline' }}>{part.content}</span>
                       )
                     )}
                   </span>

@@ -17,20 +17,24 @@ function AnimatedMessage({ children, animate }) {
     
     if (phase === 'measuring' && measureRef.current) {
       const height = measureRef.current.offsetHeight;
-      setPhase('animating');
       
-      requestAnimationFrame(() => {
-        if (animRef.current) {
-          animRef.current.style.height = '0px';
-          requestAnimationFrame(() => {
-            if (animRef.current) {
-              animRef.current.style.height = height + 'px';
-            }
-          });
-        }
-      });
-      
-      timerRef.current = setTimeout(() => setPhase('done'), 150);
+      // Delay before starting animation to batch multiple messages
+      timerRef.current = setTimeout(() => {
+        setPhase('animating');
+        
+        requestAnimationFrame(() => {
+          if (animRef.current) {
+            animRef.current.style.height = '0px';
+            requestAnimationFrame(() => {
+              if (animRef.current) {
+                animRef.current.style.height = height + 'px';
+              }
+            });
+          }
+        });
+        
+        timerRef.current = setTimeout(() => setPhase('done'), 150);
+      }, 100); // 100ms delay to batch messages together
     }
 
     return () => {

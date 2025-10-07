@@ -18,7 +18,6 @@ function AnimatedMessage({ children, animate }) {
     if (phase === 'measuring' && measureRef.current) {
       const height = measureRef.current.offsetHeight;
       
-      // Delay before starting animation to batch multiple messages
       timerRef.current = setTimeout(() => {
         setPhase('animating');
         
@@ -33,8 +32,8 @@ function AnimatedMessage({ children, animate }) {
           }
         });
         
-        timerRef.current = setTimeout(() => setPhase('done'), 120);
-      }, 50); // Reduced delay for more immediate response
+        timerRef.current = setTimeout(() => setPhase('done'), 150);
+      }, 100);
     }
 
     return () => {
@@ -61,7 +60,7 @@ function AnimatedMessage({ children, animate }) {
       ref={animRef}
       style={{
         overflow: 'hidden',
-        transition: 'height 120ms cubic-bezier(0.4, 0, 0.2, 1)',
+        transition: 'height 150ms ease-out',
         willChange: 'height',
         marginBottom: '4px'
       }}
@@ -136,12 +135,8 @@ export default function Overlay() {
 
   useEffect(() => {
     if (!router.isReady) return;
-    
-    const newChannel = router.query.channel || 'xqc';
-    console.log('URL channel parameter:', newChannel);
-    
     setSettings({
-      channel: newChannel,
+      channel: router.query.channel || 'xqc',
       animation: router.query.animation || 'slide',
       size: parseInt(router.query.size) || 3,
       font: parseInt(router.query.font) || 0,
@@ -161,7 +156,6 @@ export default function Overlay() {
       
       try {
         // Method 1: Try to get 7TV user by searching with display name
-        // This is how 7TV extension works - it searches for users
         try {
           const searchResponse = await fetch(
             `https://7tv.io/v3/gql`,
@@ -199,7 +193,6 @@ export default function Overlay() {
             const searchData = await searchResponse.json();
             const users = searchData?.data?.users?.items || [];
             
-            // Find user with matching Twitch connection
             let userId = null;
             for (const user of users) {
               const twitchConn = user.connections?.find(
@@ -213,7 +206,6 @@ export default function Overlay() {
             }
 
             if (userId) {
-              // Fetch user's emote set
               const userResponse = await fetch(`https://7tv.io/v3/users/${userId}`);
               if (userResponse.ok) {
                 const userData = await userResponse.json();
@@ -236,10 +228,9 @@ export default function Overlay() {
           console.warn('7TV GraphQL search failed:', e);
         }
 
-        // Method 2: Fallback - try direct Twitch ID lookup (for xQc case where Twitch name = Kick name)
+        // Method 2: Fallback - try direct Twitch ID lookup
         if (Object.keys(newEmoteMap).length === 0) {
           try {
-            // Get Twitch user ID
             const twitchResponse = await fetch(
               `https://api.ivr.fi/v2/twitch/user?login=${settings.channel}`
             );
@@ -249,7 +240,6 @@ export default function Overlay() {
               const twitchId = twitchData?.[0]?.id;
               
               if (twitchId) {
-                // Try to get 7TV emotes via Twitch ID
                 const stvResponse = await fetch(`https://7tv.io/v3/users/twitch/${twitchId}`);
                 if (stvResponse.ok) {
                   const stvData = await stvResponse.json();
@@ -280,7 +270,6 @@ export default function Overlay() {
             const globalData = await globalResponse.json();
             if (globalData?.emotes) {
               globalData.emotes.forEach(emote => {
-                // Don't override channel emotes with global ones
                 if (!newEmoteMap[emote.name]) {
                   const files = emote.data?.host?.files || [];
                   const webpFile = files.find(f => f.name === '4x.webp') || 
@@ -300,7 +289,6 @@ export default function Overlay() {
 
         // Load BTTV emotes
         try {
-          // Try channel emotes
           const bttvChannelResponse = await fetch(
             `https://api.betterttv.net/3/cached/users/twitch/${settings.channel}`
           );
@@ -371,26 +359,17 @@ export default function Overlay() {
 
   useEffect(() => {
     if (!settings.channel) return;
-    
-    console.log('Connecting to Kick channel:', settings.channel);
-    
-    // Clear previous messages when channel changes
-    setMessages([]);
 
+    // Clear messages when channel changes
+    setMessages([]);
+    
     let pusher = null;
     let channel = null;
 
     async function connectToKick() {
       try {
         const response = await fetch(`https://kick.com/api/v2/channels/${settings.channel}`);
-        
-        if (!response.ok) {
-          console.error('Failed to fetch channel:', settings.channel, 'Status:', response.status);
-          return;
-        }
-        
         const data = await response.json();
-        console.log('Connected to:', data.slug, 'Chatroom ID:', data.chatroom.id);
         setChannelData(data);
 
         pusher = new Pusher('32cbd69e4b950bf97679', { cluster: 'us2' });
@@ -438,12 +417,13 @@ export default function Overlay() {
         });
 
       } catch (error) {
-        console.error('Failed to connect to Kick:', settings.channel, error);
+        console.error('Failed to connect to Kick:', error);
       }
     }
 
     connectToKick();
-    
+
+    // Proper cleanup function
     return () => {
       if (channel) {
         channel.unbind_all();
@@ -456,9 +436,9 @@ export default function Overlay() {
   }, [settings.channel]);
 
   const sizeMap = {
-    1: { container: 'text-2xl', emote: 'max-h-[25px]', maxWidth: '25px' },
-    2: { container: 'text-4xl', emote: 'max-h-[42px]', maxWidth: '42px' },
-    3: { container: 'text-5xl', emote: 'max-h-[60px]', maxWidth: '60px' }
+    1: { container: 'text-2xl', emote: 'max-h-[25px]' },
+    2: { container: 'text-4xl', emote: 'max-h-[42px]' },
+    3: { container: 'text-5xl', emote: 'max-h-[60px]' }
   };
 
   const fontMap = {
@@ -522,10 +502,11 @@ export default function Overlay() {
           {messages.map((msg, index) => (
             <AnimatedMessage key={msg.id} animate={settings.animation === 'slide' && index === messages.length - 1}>
               <div style={{ 
-                lineHeight: '1.6',
                 display: 'flex',
+                flexWrap: 'wrap',
                 alignItems: 'center',
-                flexWrap: 'wrap'
+                marginBottom: '8px',
+                minHeight: '60px'
               }}>
                 {msg.badges?.length > 0 && (
                   <>
@@ -539,8 +520,7 @@ export default function Overlay() {
                           height: '40px',
                           verticalAlign: 'middle',
                           borderRadius: '10%',
-                          marginRight: i === msg.badges.length - 1 ? '8px' : '5px',
-                          marginBottom: '2px',
+                          marginRight: '8px',
                           display: 'inline-block',
                           flexShrink: 0
                         }}
@@ -557,14 +537,15 @@ export default function Overlay() {
                     }}>
                       {msg.username}
                     </span>
-                    <span style={{ marginRight: '6px', flexShrink: 0 }}>:</span>
+                    <span style={{ marginRight: '8px', flexShrink: 0 }}>: </span>
                   </>
                 )}
                 <span style={{ 
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '2px'
+                  display: 'inline',
+                  wordBreak: 'break-word',
+                  overflowWrap: 'break-word',
+                  flex: '1 1 auto',
+                  minWidth: 0
                 }}>
                   {msg.messageParts.map((part, i) => 
                     part.type === 'emote' ? (
@@ -573,23 +554,18 @@ export default function Overlay() {
                         src={part.url}
                         alt={part.name}
                         style={{
-                          maxHeight: currentSize.emote.replace('max-h-[', '').replace(']', ''),
-                          maxWidth: currentSize.maxWidth,
+                          maxHeight: currentSize.emote === 'max-h-[25px]' ? '25px' :
+                                    currentSize.emote === 'max-h-[42px]' ? '42px' : '60px',
                           height: 'auto',
                           width: 'auto',
                           verticalAlign: 'middle',
                           display: 'inline-block',
-                          marginRight: '2px',
-                          objectFit: 'contain'
+                          marginRight: '4px',
+                          marginLeft: '2px'
                         }}
                       />
                     ) : (
-                      <span key={i} style={{ 
-                        display: 'inline',
-                        wordBreak: 'break-word'
-                      }}>
-                        {part.content}
-                      </span>
+                      <span key={i} style={{ display: 'inline' }}>{part.content}</span>
                     )
                   )}
                 </span>

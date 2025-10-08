@@ -17,20 +17,23 @@ function AnimatedMessage({ children, animate }) {
     
     if (phase === 'measuring' && measureRef.current) {
       const height = measureRef.current.offsetHeight;
-      setPhase('animating');
       
-      requestAnimationFrame(() => {
-        if (animRef.current) {
-          animRef.current.style.height = '0px';
-          requestAnimationFrame(() => {
-            if (animRef.current) {
-              animRef.current.style.height = height + 'px';
-            }
-          });
-        }
-      });
-      
-      timerRef.current = setTimeout(() => setPhase('done'), 150);
+      timerRef.current = setTimeout(() => {
+        setPhase('animating');
+        
+        requestAnimationFrame(() => {
+          if (animRef.current) {
+            animRef.current.style.height = '0px';
+            requestAnimationFrame(() => {
+              if (animRef.current) {
+                animRef.current.style.height = height + 'px';
+              }
+            });
+          }
+        });
+        
+        timerRef.current = setTimeout(() => setPhase('done'), 150);
+      }, 100);
     }
 
     return () => {
@@ -41,7 +44,7 @@ function AnimatedMessage({ children, animate }) {
   }, [phase, animate]);
 
   if (!animate || phase === 'done') {
-    return <div style={{ marginBottom: '8px' }}>{children}</div>;
+    return <div style={{ marginBottom: '4px' }}>{children}</div>;
   }
 
   if (phase === 'measuring') {
@@ -57,9 +60,9 @@ function AnimatedMessage({ children, animate }) {
       ref={animRef}
       style={{
         overflow: 'hidden',
-        transition: 'height 150ms ease-in-out',
+        transition: 'height 150ms ease-out',
         willChange: 'height',
-        marginBottom: '8px'
+        marginBottom: '4px'
       }}
     >
       {children}
@@ -129,15 +132,10 @@ export default function Overlay() {
     smallCaps: false,
     hideNames: false
   });
-  
-  const messageQueueRef = useRef([]);
-  const processingRef = useRef(false);
-  const emoteMapRef = useRef({});
 
   useEffect(() => {
     if (!router.isReady) return;
-    
-    const newSettings = {
+    setSettings({
       channel: router.query.channel || 'xqc',
       animation: router.query.animation || 'slide',
       size: parseInt(router.query.size) || 3,
@@ -147,45 +145,16 @@ export default function Overlay() {
       shadow: parseInt(router.query.shadow) || 0,
       smallCaps: router.query.smallCaps === 'true',
       hideNames: router.query.hideNames === 'true'
-    };
-    
-    setSettings(newSettings);
+    });
   }, [router.isReady, router.query]);
 
   useEffect(() => {
-    emoteMapRef.current = emoteMap;
-  }, [emoteMap]);
-
-  // Message batching system - processes queue every 200ms
-  useEffect(() => {
-    const processQueue = () => {
-      if (messageQueueRef.current.length > 0 && !processingRef.current) {
-        processingRef.current = true;
-        
-        const messagesToAdd = [...messageQueueRef.current];
-        messageQueueRef.current = [];
-        
-        setMessages(prev => [...prev.slice(-(50 - messagesToAdd.length)), ...messagesToAdd]);
-        
-        setTimeout(() => {
-          processingRef.current = false;
-        }, 200);
-      }
-    };
-
-    const interval = setInterval(processQueue, 200);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Load emotes only when channel is properly set
-  useEffect(() => {
-    if (!settings.channel || !router.isReady) return;
+    if (!settings.channel) return;
 
     async function loadEmotes() {
       const newEmoteMap = {};
       
       try {
-        // Load 7TV emotes
         try {
           const searchResponse = await fetch(
             `https://7tv.io/v3/gql`,
@@ -258,7 +227,6 @@ export default function Overlay() {
           console.warn('7TV GraphQL search failed:', e);
         }
 
-        // Fallback - try direct Twitch ID lookup
         if (Object.keys(newEmoteMap).length === 0) {
           try {
             const twitchResponse = await fetch(
@@ -293,7 +261,6 @@ export default function Overlay() {
           }
         }
 
-        // Load 7TV global emotes
         try {
           const globalResponse = await fetch('https://7tv.io/v3/emote-sets/global');
           if (globalResponse.ok) {
@@ -317,7 +284,6 @@ export default function Overlay() {
           console.warn('7TV global emotes failed:', e);
         }
 
-        // Load BTTV emotes
         try {
           const bttvChannelResponse = await fetch(
             `https://api.betterttv.net/3/cached/users/twitch/${settings.channel}`
@@ -335,7 +301,6 @@ export default function Overlay() {
           console.warn('BTTV fetch failed:', e);
         }
 
-        // Load BTTV global emotes
         try {
           const bttvGlobalResponse = await fetch('https://api.betterttv.net/3/cached/emotes/global');
           if (bttvGlobalResponse.ok) {
@@ -351,7 +316,6 @@ export default function Overlay() {
           console.warn('BTTV global fetch failed:', e);
         }
 
-        // Load FFZ emotes
         try {
           const ffzResponse = await fetch(
             `https://api.betterttv.net/3/cached/frankerfacez/users/twitch/${settings.channel}`
@@ -379,11 +343,22 @@ export default function Overlay() {
     }
 
     loadEmotes();
-  }, [settings.channel, router.isReady]);
+  }, [settings.channel]);
 
-  // Connect to Kick only when channel is properly set
+  const emoteMapRef = useRef({});
+  
   useEffect(() => {
-    if (!settings.channel || !router.isReady) return;
+    emoteMapRef.current = emoteMap;
+  }, [emoteMap]);
+
+  useEffect(() => {
+    if (!settings.channel) return;
+
+    // Clear messages when channel changes
+    setMessages([]);
+    
+    let pusher = null;
+    let channel = null;
 
     async function connectToKick() {
       try {
@@ -391,8 +366,8 @@ export default function Overlay() {
         const data = await response.json();
         setChannelData(data);
 
-        const pusher = new Pusher('32cbd69e4b950bf97679', { cluster: 'us2' });
-        const channel = pusher.subscribe(`chatrooms.${data.chatroom.id}.v2`);
+        pusher = new Pusher('32cbd69e4b950bf97679', { cluster: 'us2' });
+        channel = pusher.subscribe(`chatrooms.${data.chatroom.id}.v2`);
         
         channel.bind('App\\Events\\ChatMessageEvent', (chatData) => {
           const badgeElements = [];
@@ -432,26 +407,32 @@ export default function Overlay() {
             timestamp: Date.now()
           };
 
-          messageQueueRef.current.push(newMessage);
+          setMessages(prev => [...prev.slice(-49), newMessage]);
         });
 
-        return () => {
-          channel.unbind_all();
-          channel.unsubscribe();
-          pusher.disconnect();
-        };
       } catch (error) {
         console.error('Failed to connect to Kick:', error);
       }
     }
 
     connectToKick();
-  }, [settings.channel, router.isReady]);
+
+    // Proper cleanup function
+    return () => {
+      if (channel) {
+        channel.unbind_all();
+        channel.unsubscribe();
+      }
+      if (pusher) {
+        pusher.disconnect();
+      }
+    };
+  }, [settings.channel]);
 
   const sizeMap = {
-    1: { container: 'text-2xl', emote: 'max-h-[25px]' },
-    2: { container: 'text-4xl', emote: 'max-h-[42px]' },
-    3: { container: 'text-5xl', emote: 'max-h-[60px]' }
+    1: { emoteHeight: 25 },
+    2: { emoteHeight: 42 },
+    3: { emoteHeight: 60 }
   };
 
   const fontMap = {
@@ -491,7 +472,7 @@ export default function Overlay() {
   const containerStyle = {
     fontFamily: settings.fontCustom || fontMap[settings.font] || fontMap[0],
     fontSize: '48px',
-    lineHeight: '1.5',
+    lineHeight: '1.3',
     fontWeight: 800,
     ...getStrokeStyle(settings.stroke),
     ...(settings.shadow && { filter: getShadowStyle(settings.shadow) }),
@@ -499,6 +480,7 @@ export default function Overlay() {
   };
 
   const currentSize = sizeMap[settings.size] || sizeMap[3];
+  const badgeSize = currentSize.emoteHeight * 0.75;
 
   return (
     <>
@@ -515,71 +497,61 @@ export default function Overlay() {
           {messages.map((msg, index) => (
             <AnimatedMessage key={msg.id} animate={settings.animation === 'slide' && index === messages.length - 1}>
               <div style={{ 
-                lineHeight: '1.5',
-                display: 'flex',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                minHeight: '60px'
+                wordWrap: 'break-word',
+                marginBottom: '4px'
               }}>
-                <span style={{ 
-                  display: 'flex',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '4px'
-                }}>
-                  {msg.badges?.length > 0 && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                      {msg.badges.map((badge, i) => (
-                        <img 
-                          key={i} 
-                          src={badge.url} 
-                          alt="badge"
-                          style={{
-                            width: '28px',
-                            height: '28px',
-                            verticalAlign: 'middle',
-                            borderRadius: '10%',
-                            display: 'inline-block',
-                            flexShrink: 0
-                          }}
-                        />
-                      ))}
+                {msg.badges?.length > 0 && (
+                  <>
+                    {msg.badges.map((badge, i) => (
+                      <img 
+                        key={i} 
+                        src={badge.url} 
+                        alt="badge"
+                        style={{
+                          height: `${badgeSize}px`,
+                          verticalAlign: 'middle',
+                          borderRadius: '10%',
+                          marginRight: '4px',
+                          display: 'inline-block'
+                        }}
+                      />
+                    ))}
+                  </>
+                )}
+                {!settings.hideNames && (
+                  <>
+                    <span style={{ color: msg.color }}>
+                      {msg.username}
                     </span>
-                  )}
-                  {!settings.hideNames && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
-                      <span style={{ color: msg.color, whiteSpace: 'nowrap' }}>
-                        {msg.username}
-                      </span>
-                      <span className="colon">:</span>
-                    </span>
-                  )}
-                  <span style={{ 
-                    wordBreak: 'break-word',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: '4px'
-                  }}>
-                    {msg.messageParts.map((part, i) => 
-                      part.type === 'emote' ? (
+                    <span>: </span>
+                  </>
+                )}
+                <span>
+                  {msg.messageParts.map((part, i) => 
+                    part.type === 'emote' ? (
+                      <span 
+                        key={i}
+                        style={{
+                          display: 'inline-block',
+                          verticalAlign: 'middle',
+                          lineHeight: 0,
+                          margin: '0 2px'
+                        }}
+                      >
                         <img 
-                          key={i}
                           src={part.url}
                           alt={part.name}
-                          className={`${currentSize.emote}`}
                           style={{
+                            height: `${currentSize.emoteHeight}px`,
                             display: 'inline-block',
-                            verticalAlign: 'middle',
-                            height: 'auto',
-                            width: 'auto'
+                            verticalAlign: 'middle'
                           }}
                         />
-                      ) : (
-                        <span key={i} style={{ display: 'inline' }}>{part.content}</span>
-                      )
-                    )}
-                  </span>
+                      </span>
+                    ) : (
+                      <span key={i}>{part.content}</span>
+                    )
+                  )}
                 </span>
               </div>
             </AnimatedMessage>

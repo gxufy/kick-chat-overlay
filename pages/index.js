@@ -491,7 +491,7 @@ export default function Overlay() {
   const containerStyle = {
     fontFamily: settings.fontCustom || fontMap[settings.font] || fontMap[0],
     fontSize: '48px',
-    lineHeight: '1.2',
+    lineHeight: '1.5',
     fontWeight: 800,
     ...getStrokeStyle(settings.stroke),
     ...(settings.shadow && { filter: getShadowStyle(settings.shadow) }),

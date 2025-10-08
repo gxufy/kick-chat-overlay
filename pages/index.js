@@ -41,7 +41,7 @@ function AnimatedMessage({ children, animate }) {
   }, [phase, animate]);
 
   if (!animate || phase === 'done') {
-    return <div style={{ marginBottom: '2px' }}>{children}</div>;
+    return <div style={{ marginBottom: '8px' }}>{children}</div>;
   }
 
   if (phase === 'measuring') {
@@ -57,9 +57,9 @@ function AnimatedMessage({ children, animate }) {
       ref={animRef}
       style={{
         overflow: 'hidden',
-        transition: 'height 150ms ease-out',
+        transition: 'height 150ms ease-in-out',
         willChange: 'height',
-        marginBottom: '2px'
+        marginBottom: '8px'
       }}
     >
       {children}
@@ -515,11 +515,11 @@ export default function Overlay() {
           {messages.map((msg, index) => (
             <AnimatedMessage key={msg.id} animate={settings.animation === 'slide' && index === messages.length - 1}>
               <div style={{ 
-                lineHeight: '1.2',
+                lineHeight: '1.5',
                 display: 'flex',
                 alignItems: 'center',
                 flexWrap: 'wrap',
-                minHeight: '48px'
+                minHeight: '60px'
               }}>
                 <span style={{ 
                   display: 'flex',

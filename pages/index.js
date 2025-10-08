@@ -4,69 +4,51 @@ import Head from 'next/head';
 import Pusher from 'pusher-js';
 
 function AnimatedMessage({ children, animate }) {
-  const [phase, setPhase] = useState(animate ? 'measuring' : 'done');
+  const [isAnimating, setIsAnimating] = useState(animate);
+  const containerRef = useRef(null);
   const measureRef = useRef(null);
-  const animRef = useRef(null);
-  const timerRef = useRef(null);
 
   useEffect(() => {
-    if (!animate) {
-      setPhase('done');
+    if (!animate || !containerRef.current || !measureRef.current) {
+      setIsAnimating(false);
       return;
     }
-    
-    if (phase === 'measuring' && measureRef.current) {
-      const height = measureRef.current.offsetHeight;
-      
-      timerRef.current = setTimeout(() => {
-        setPhase('animating');
-        
-        requestAnimationFrame(() => {
-          if (animRef.current) {
-            animRef.current.style.height = '0px';
-            requestAnimationFrame(() => {
-              if (animRef.current) {
-                animRef.current.style.height = height + 'px';
-              }
-            });
-          }
-        });
-        
-        timerRef.current = setTimeout(() => setPhase('done'), 150);
-      }, 100);
-    }
 
-    return () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
+    const targetHeight = measureRef.current.offsetHeight;
+    containerRef.current.style.height = '0px';
+    containerRef.current.style.overflow = 'hidden';
+
+    requestAnimationFrame(() => {
+      if (containerRef.current) {
+        containerRef.current.style.transition = 'height 150ms ease-out';
+        containerRef.current.style.height = `${targetHeight}px`;
       }
-    };
-  }, [phase, animate]);
+    });
 
-  if (!animate || phase === 'done') {
+    const timer = setTimeout(() => {
+      if (containerRef.current) {
+        containerRef.current.style.height = 'auto';
+        containerRef.current.style.overflow = 'visible';
+      }
+      setIsAnimating(false);
+    }, 150);
+
+    return () => clearTimeout(timer);
+  }, [animate]);
+
+  if (!animate) {
     return <div style={{ marginBottom: '4px' }}>{children}</div>;
   }
 
-  if (phase === 'measuring') {
-    return (
+  return (
+    <>
       <div ref={measureRef} style={{ visibility: 'hidden', position: 'absolute', pointerEvents: 'none' }}>
         {children}
       </div>
-    );
-  }
-
-  return (
-    <div 
-      ref={animRef}
-      style={{
-        overflow: 'hidden',
-        transition: 'height 150ms ease-out',
-        willChange: 'height',
-        marginBottom: '4px'
-      }}
-    >
-      {children}
-    </div>
+      <div ref={containerRef} style={{ marginBottom: '4px' }}>
+        {children}
+      </div>
+    </>
   );
 }
 
@@ -122,7 +104,7 @@ export default function Overlay() {
   const [channelData, setChannelData] = useState(null);
   const [emoteMap, setEmoteMap] = useState({});
   const [settings, setSettings] = useState({ 
-    channel: 'xqc',
+    channel: '',
     animation: 'slide',
     size: 3,
     font: 0,
@@ -135,17 +117,20 @@ export default function Overlay() {
 
   useEffect(() => {
     if (!router.isReady) return;
-    setSettings({
-      channel: router.query.channel || 'xqc',
-      animation: router.query.animation || 'slide',
-      size: parseInt(router.query.size) || 3,
-      font: parseInt(router.query.font) || 0,
-      fontCustom: router.query.fontCustom || '',
-      stroke: parseInt(router.query.stroke) || 0,
-      shadow: parseInt(router.query.shadow) || 0,
-      smallCaps: router.query.smallCaps === 'true',
-      hideNames: router.query.hideNames === 'true'
-    });
+    const newChannel = router.query.channel || '';
+    if (newChannel) {
+      setSettings({
+        channel: newChannel,
+        animation: router.query.animation || 'slide',
+        size: parseInt(router.query.size) || 3,
+        font: parseInt(router.query.font) || 0,
+        fontCustom: router.query.fontCustom || '',
+        stroke: parseInt(router.query.stroke) || 0,
+        shadow: parseInt(router.query.shadow) || 0,
+        smallCaps: router.query.smallCaps === 'true',
+        hideNames: router.query.hideNames === 'true'
+      });
+    }
   }, [router.isReady, router.query]);
 
   useEffect(() => {

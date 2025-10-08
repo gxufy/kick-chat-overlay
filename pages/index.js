@@ -3,28 +3,16 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Pusher from 'pusher-js';
 
-function AnimatedMessage({ children, animate, animIndex }) {
-  const [phase, setPhase] = useState('waiting');
+function AnimatedMessage({ children, animate }) {
+  const [phase, setPhase] = useState(animate ? 'measuring' : 'done');
   const measureRef = useRef(null);
   const animRef = useRef(null);
   const timerRef = useRef(null);
-  const startDelayRef = useRef(animIndex * 50); // 50ms delay between each message
 
   useEffect(() => {
     if (!animate) {
       setPhase('done');
       return;
-    }
-
-    // Wait for stagger delay before starting
-    if (phase === 'waiting') {
-      timerRef.current = setTimeout(() => {
-        setPhase('measuring');
-      }, startDelayRef.current);
-      
-      return () => {
-        if (timerRef.current) clearTimeout(timerRef.current);
-      };
     }
     
     if (phase === 'measuring' && measureRef.current) {
@@ -50,20 +38,17 @@ function AnimatedMessage({ children, animate, animIndex }) {
         clearTimeout(timerRef.current);
       }
     };
-  }, [phase, animate, animIndex]);
+  }, [phase, animate]);
 
   if (!animate || phase === 'done') {
     return <div style={{ marginBottom: '2px' }}>{children}</div>;
   }
 
-  if (phase === 'waiting' || phase === 'measuring') {
+  if (phase === 'measuring') {
     return (
-      <>
-        <div ref={measureRef} style={{ visibility: 'hidden', position: 'absolute', pointerEvents: 'none' }}>
-          {children}
-        </div>
-        {phase === 'waiting' && <div style={{ height: '0px', marginBottom: '2px' }} />}
-      </>
+      <div ref={measureRef} style={{ visibility: 'hidden', position: 'absolute', pointerEvents: 'none' }}>
+        {children}
+      </div>
     );
   }
 
@@ -72,7 +57,7 @@ function AnimatedMessage({ children, animate, animIndex }) {
       ref={animRef}
       style={{
         overflow: 'hidden',
-        transition: 'height 150ms cubic-bezier(0.4, 0.0, 0.6, 1)',
+        transition: 'height 150ms ease-out',
         willChange: 'height',
         marginBottom: '2px'
       }}
@@ -144,6 +129,10 @@ export default function Overlay() {
     smallCaps: false,
     hideNames: false
   });
+  
+  const messageQueueRef = useRef([]);
+  const processingRef = useRef(false);
+  const emoteMapRef = useRef({});
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -163,6 +152,31 @@ export default function Overlay() {
     setSettings(newSettings);
   }, [router.isReady, router.query]);
 
+  useEffect(() => {
+    emoteMapRef.current = emoteMap;
+  }, [emoteMap]);
+
+  // Message batching system - processes queue every 200ms
+  useEffect(() => {
+    const processQueue = () => {
+      if (messageQueueRef.current.length > 0 && !processingRef.current) {
+        processingRef.current = true;
+        
+        const messagesToAdd = [...messageQueueRef.current];
+        messageQueueRef.current = [];
+        
+        setMessages(prev => [...prev.slice(-(50 - messagesToAdd.length)), ...messagesToAdd]);
+        
+        setTimeout(() => {
+          processingRef.current = false;
+        }, 200);
+      }
+    };
+
+    const interval = setInterval(processQueue, 200);
+    return () => clearInterval(interval);
+  }, []);
+
   // Load emotes only when channel is properly set
   useEffect(() => {
     if (!settings.channel || !router.isReady) return;
@@ -171,8 +185,7 @@ export default function Overlay() {
       const newEmoteMap = {};
       
       try {
-        // Method 1: Try to get 7TV user by searching with display name
-        // This is how 7TV extension works - it searches for users
+        // Load 7TV emotes
         try {
           const searchResponse = await fetch(
             `https://7tv.io/v3/gql`,
@@ -210,7 +223,6 @@ export default function Overlay() {
             const searchData = await searchResponse.json();
             const users = searchData?.data?.users?.items || [];
             
-            // Find user with matching Twitch connection
             let userId = null;
             for (const user of users) {
               const twitchConn = user.connections?.find(
@@ -224,7 +236,6 @@ export default function Overlay() {
             }
 
             if (userId) {
-              // Fetch user's emote set
               const userResponse = await fetch(`https://7tv.io/v3/users/${userId}`);
               if (userResponse.ok) {
                 const userData = await userResponse.json();
@@ -247,10 +258,9 @@ export default function Overlay() {
           console.warn('7TV GraphQL search failed:', e);
         }
 
-        // Method 2: Fallback - try direct Twitch ID lookup (for xQc case where Twitch name = Kick name)
+        // Fallback - try direct Twitch ID lookup
         if (Object.keys(newEmoteMap).length === 0) {
           try {
-            // Get Twitch user ID
             const twitchResponse = await fetch(
               `https://api.ivr.fi/v2/twitch/user?login=${settings.channel}`
             );
@@ -260,7 +270,6 @@ export default function Overlay() {
               const twitchId = twitchData?.[0]?.id;
               
               if (twitchId) {
-                // Try to get 7TV emotes via Twitch ID
                 const stvResponse = await fetch(`https://7tv.io/v3/users/twitch/${twitchId}`);
                 if (stvResponse.ok) {
                   const stvData = await stvResponse.json();
@@ -291,7 +300,6 @@ export default function Overlay() {
             const globalData = await globalResponse.json();
             if (globalData?.emotes) {
               globalData.emotes.forEach(emote => {
-                // Don't override channel emotes with global ones
                 if (!newEmoteMap[emote.name]) {
                   const files = emote.data?.host?.files || [];
                   const webpFile = files.find(f => f.name === '4x.webp') || 
@@ -311,7 +319,6 @@ export default function Overlay() {
 
         // Load BTTV emotes
         try {
-          // Try channel emotes
           const bttvChannelResponse = await fetch(
             `https://api.betterttv.net/3/cached/users/twitch/${settings.channel}`
           );
@@ -372,47 +379,11 @@ export default function Overlay() {
     }
 
     loadEmotes();
-  }, [settings.channel]);
+  }, [settings.channel, router.isReady]);
 
-  const emoteMapRef = useRef({});
-  
+  // Connect to Kick only when channel is properly set
   useEffect(() => {
-    emoteMapRef.current = emoteMap;
-  }, [emoteMap]);
-
-  // Message batching system with sequential animation
-  useEffect(() => {
-    let animationIndex = 0;
-    
-    const processQueue = () => {
-      if (messageQueueRef.current.length > 0 && !processingRef.current) {
-        processingRef.current = true;
-        
-        const messagesToAdd = [...messageQueueRef.current];
-        messageQueueRef.current = [];
-        
-        // Add messages with staggered animation indices
-        const messagesWithAnimIndex = messagesToAdd.map((msg, idx) => ({
-          ...msg,
-          animIndex: animationIndex + idx
-        }));
-        
-        animationIndex += messagesToAdd.length;
-        
-        setMessages(prev => [...prev.slice(-(50 - messagesWithAnimIndex.length)), ...messagesWithAnimIndex]);
-        
-        setTimeout(() => {
-          processingRef.current = false;
-        }, 50); // Reduced from 200ms for tighter batching
-      }
-    };
-
-    const interval = setInterval(processQueue, 200);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    if (!settings.channel) return;
+    if (!settings.channel || !router.isReady) return;
 
     async function connectToKick() {
       try {
@@ -461,7 +432,6 @@ export default function Overlay() {
             timestamp: Date.now()
           };
 
-          // Add to queue instead of directly to state
           messageQueueRef.current.push(newMessage);
         });
 
@@ -543,11 +513,7 @@ export default function Overlay() {
           }}
         >
           {messages.map((msg, index) => (
-            <AnimatedMessage 
-              key={msg.id} 
-              animate={settings.animation === 'slide' && index === messages.length - 1} 
-              animIndex={msg.animIndex || 0}
-            >
+            <AnimatedMessage key={msg.id} animate={settings.animation === 'slide' && index === messages.length - 1}>
               <div style={{ 
                 lineHeight: '1.2',
                 display: 'flex',

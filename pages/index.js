@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Pusher from 'pusher-js';
 
-function AnimatedMessage({ children, animate }) {
+function AnimatedMessage({ children, animate, direction = 'vertical' }) {
   const [showContent, setShowContent] = useState(!animate);
   const placeholderRef = useRef(null);
   const measureRef = useRef(null);
@@ -17,9 +17,18 @@ function AnimatedMessage({ children, animate }) {
     // ChatIS-style: pre-measure, animate spacer with jQuery "swing" equivalent, then swap in content
     const target = placeholderRef.current;
     const targetHeight = measureRef.current.offsetHeight;
+    const targetWidth = measureRef.current.offsetWidth;
+    const marginBottom = 4; // Include the message's margin in animation
 
-    target.style.height = '0px';
-    target.style.overflow = 'hidden';
+    if (direction === 'vertical') {
+      target.style.height = '0px';
+      target.style.marginBottom = '0px';
+      target.style.overflow = 'hidden';
+    } else {
+      target.style.width = '0px';
+      target.style.height = `${targetHeight}px`;
+      target.style.overflow = 'hidden';
+    }
 
     let start;
     const duration = 150; // ms
@@ -28,7 +37,14 @@ function AnimatedMessage({ children, animate }) {
       if (start == null) start = ts;
       const t = Math.min(1, (ts - start) / duration);
       const eased = swing(t);
-      target.style.height = `${Math.round(targetHeight * eased)}px`;
+      
+      if (direction === 'vertical') {
+        target.style.height = `${Math.round(targetHeight * eased)}px`;
+        target.style.marginBottom = `${Math.round(marginBottom * eased)}px`;
+      } else {
+        target.style.width = `${Math.round(targetWidth * eased)}px`;
+      }
+      
       if (t < 1) {
         rafId = requestAnimationFrame(step);
       } else {
@@ -37,7 +53,7 @@ function AnimatedMessage({ children, animate }) {
     });
 
     return () => cancelAnimationFrame(rafId);
-  }, [animate]);
+  }, [animate, direction]);
 
   const measureStyles = { visibility: 'hidden', position: 'absolute', pointerEvents: 'none' };
 

@@ -7,53 +7,89 @@ function AnimatedMessage({ children, animate, direction = 'vertical' }) {
   const [showContent, setShowContent] = useState(!animate);
   const placeholderRef = useRef(null);
   const measureRef = useRef(null);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
-    if (!animate || !placeholderRef.current || !measureRef.current) {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!animate) {
       setShowContent(true);
       return;
     }
 
-    // ChatIS-style: pre-measure, animate spacer with jQuery "swing" equivalent, then swap in content
-    const target = placeholderRef.current;
-    const targetHeight = measureRef.current.offsetHeight;
-    const targetWidth = measureRef.current.offsetWidth;
-    const marginBottom = 4; // Include the message's margin in animation
-
-    if (direction === 'vertical') {
-      target.style.height = '0px';
-      target.style.marginBottom = '0px';
-      target.style.overflow = 'hidden';
-    } else {
-      target.style.width = '0px';
-      target.style.height = `${targetHeight}px`;
-      target.style.overflow = 'hidden';
-    }
-
-    let start;
-    const duration = 150; // ms
-    const swing = (t) => 0.5 - Math.cos(Math.PI * t) / 2; // jQuery "swing"
-    let rafId = requestAnimationFrame(function step(ts) {
-      if (start == null) start = ts;
-      const t = Math.min(1, (ts - start) / duration);
-      const eased = swing(t);
-      
-      if (direction === 'vertical') {
-        target.style.height = `${Math.round(targetHeight * eased)}px`;
-        target.style.marginBottom = `${Math.round(marginBottom * eased)}px`;
-      } else {
-        target.style.width = `${Math.round(targetWidth * eased)}px`;
-      }
-      
-      if (t < 1) {
-        rafId = requestAnimationFrame(step);
-      } else {
+    // Wait for next frame to ensure refs are ready and DOM is stable
+    const setupRaf = requestAnimationFrame(() => {
+      if (!isMountedRef.current || !placeholderRef.current || !measureRef.current) {
         setShowContent(true);
+        return;
       }
+
+      // ChatIS-style: pre-measure, animate spacer with jQuery "swing" equivalent, then swap in content
+      const target = placeholderRef.current;
+      const measure = measureRef.current;
+      
+      // Force layout recalculation for accurate measurement
+      measure.offsetHeight;
+      
+      const targetHeight = measure.offsetHeight;
+      const targetWidth = measure.offsetWidth;
+      const marginBottom = 4; // Include the message's margin in animation
+
+      // Ensure we have valid measurements
+      if (targetHeight === 0 && targetWidth === 0) {
+        setShowContent(true);
+        return;
+      }
+
+      if (direction === 'vertical') {
+        target.style.height = '0px';
+        target.style.marginBottom = '0px';
+        target.style.overflow = 'hidden';
+      } else {
+        target.style.width = '0px';
+        target.style.height = `${targetHeight}px`;
+        target.style.overflow = 'hidden';
+      }
+
+      let start;
+      const duration = 150; // ms
+      const swing = (t) => 0.5 - Math.cos(Math.PI * t) / 2; // jQuery "swing"
+      
+      const step = (ts) => {
+        if (!isMountedRef.current) return;
+        
+        if (start == null) start = ts;
+        const t = Math.min(1, (ts - start) / duration);
+        const eased = swing(t);
+        
+        if (direction === 'vertical') {
+          target.style.height = `${Math.round(targetHeight * eased)}px`;
+          target.style.marginBottom = `${Math.round(marginBottom * eased)}px`;
+        } else {
+          target.style.width = `${Math.round(targetWidth * eased)}px`;
+        }
+        
+        if (t < 1) {
+          requestAnimationFrame(step);
+        } else {
+          if (isMountedRef.current) {
+            setShowContent(true);
+          }
+        }
+      };
+      
+      requestAnimationFrame(step);
     });
 
-    return () => cancelAnimationFrame(rafId);
-  }, [animate, direction]);
+    return () => {
+      cancelAnimationFrame(setupRaf);
+    };
+  }, [animate, direction, children]);
 
   const measureStyles = { visibility: 'hidden', position: 'absolute', pointerEvents: 'none' };
 

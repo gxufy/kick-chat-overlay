@@ -4,50 +4,55 @@ import Head from 'next/head';
 import Pusher from 'pusher-js';
 
 function AnimatedMessage({ children, animate }) {
-  const [isAnimating, setIsAnimating] = useState(animate);
-  const containerRef = useRef(null);
+  const [showContent, setShowContent] = useState(!animate);
+  const placeholderRef = useRef(null);
   const measureRef = useRef(null);
 
   useEffect(() => {
-    if (!animate || !containerRef.current || !measureRef.current) {
-      setIsAnimating(false);
+    if (!animate || !placeholderRef.current || !measureRef.current) {
+      setShowContent(true);
       return;
     }
 
+    // ChatIS-style: pre-measure, animate spacer with jQuery "swing" equivalent, then swap in content
+    const target = placeholderRef.current;
     const targetHeight = measureRef.current.offsetHeight;
-    containerRef.current.style.height = '0px';
-    containerRef.current.style.overflow = 'hidden';
 
-    requestAnimationFrame(() => {
-      if (containerRef.current) {
-        containerRef.current.style.transition = 'height 150ms ease-in-out';
-        containerRef.current.style.height = `${targetHeight}px`;
+    target.style.height = '0px';
+    target.style.overflow = 'hidden';
+
+    let start;
+    const duration = 150; // ms
+    const swing = (t) => 0.5 - Math.cos(Math.PI * t) / 2; // jQuery "swing"
+    let rafId = requestAnimationFrame(function step(ts) {
+      if (start == null) start = ts;
+      const t = Math.min(1, (ts - start) / duration);
+      const eased = swing(t);
+      target.style.height = `${Math.round(targetHeight * eased)}px`;
+      if (t < 1) {
+        rafId = requestAnimationFrame(step);
+      } else {
+        setShowContent(true);
       }
     });
 
-    const timer = setTimeout(() => {
-      if (containerRef.current) {
-        containerRef.current.style.height = 'auto';
-        containerRef.current.style.overflow = 'visible';
-      }
-      setIsAnimating(false);
-    }, 150);
-
-    return () => clearTimeout(timer);
+    return () => cancelAnimationFrame(rafId);
   }, [animate]);
 
-  if (!animate) {
-    return <div style={{ marginBottom: '4px' }}>{children}</div>;
-  }
+  const measureStyles = { visibility: 'hidden', position: 'absolute', pointerEvents: 'none' };
 
   return (
     <>
-      <div ref={measureRef} style={{ visibility: 'hidden', position: 'absolute', pointerEvents: 'none' }}>
+      <div ref={measureRef} style={measureStyles}>
         {children}
       </div>
-      <div ref={containerRef} style={{ marginBottom: '4px' }}>
-        {children}
-      </div>
+      {showContent ? (
+        <div style={{ marginBottom: '4px' }}>
+          {children}
+        </div>
+      ) : (
+        <div ref={placeholderRef} />
+      )}
     </>
   );
 }

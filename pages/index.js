@@ -20,7 +20,7 @@ function AnimatedMessage({ children, animate }) {
 
     requestAnimationFrame(() => {
       if (containerRef.current) {
-        containerRef.current.style.transition = 'height 250ms cubic-bezier(0.4, 0, 0.2, 1)';
+        containerRef.current.style.transition = 'height 150ms ease-in-out';
         containerRef.current.style.height = `${targetHeight}px`;
       }
     });
@@ -31,7 +31,7 @@ function AnimatedMessage({ children, animate }) {
         containerRef.current.style.overflow = 'visible';
       }
       setIsAnimating(false);
-    }, 250);
+    }, 150);
 
     return () => clearTimeout(timer);
   }, [animate]);

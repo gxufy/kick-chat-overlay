@@ -172,6 +172,9 @@ export default function Overlay() {
     hideNames: false
   });
 
+  // ChatIS-style message queue: collect messages and process them every 200ms
+  const messageQueueRef = useRef([]);
+
   useEffect(() => {
     if (!router.isReady) return;
     const newChannel = router.query.channel || '';
@@ -393,6 +396,23 @@ export default function Overlay() {
     emoteMapRef.current = emoteMap;
   }, [emoteMap]);
 
+  // ChatIS-style: Process message queue every 200ms
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (messageQueueRef.current.length > 0) {
+        const queuedMessages = [...messageQueueRef.current];
+        messageQueueRef.current = [];
+        
+        setMessages(prev => {
+          const combined = [...prev, ...queuedMessages];
+          return combined.slice(-50); // Keep last 50 messages
+        });
+      }
+    }, 200);
+
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     if (!settings.channel) return;
 
@@ -449,7 +469,8 @@ export default function Overlay() {
             timestamp: Date.now()
           };
 
-          setMessages(prev => [...prev.slice(-49), newMessage]);
+          // ChatIS-style: Add to queue instead of directly to state
+          messageQueueRef.current.push(newMessage);
         });
 
       } catch (error) {

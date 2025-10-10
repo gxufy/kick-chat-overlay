@@ -396,7 +396,7 @@ export default function Overlay() {
     emoteMapRef.current = emoteMap;
   }, [emoteMap]);
 
-  // ChatIS-style: Process message queue every 100ms
+  // ChatIS-style: Process message queue every 400ms
   // Key: Batch ALL queued messages together and animate them as ONE block
   useEffect(() => {
     const interval = setInterval(() => {
@@ -415,7 +415,7 @@ export default function Overlay() {
           return combined.slice(-50);
         });
       }
-    }, 100);
+    }, 400);
 
     return () => clearInterval(interval);
   }, []);

@@ -397,15 +397,22 @@ export default function Overlay() {
   }, [emoteMap]);
 
   // ChatIS-style: Process message queue every 200ms
+  // Key: Batch ALL queued messages together and animate them as ONE block
   useEffect(() => {
     const interval = setInterval(() => {
       if (messageQueueRef.current.length > 0) {
-        const queuedMessages = [...messageQueueRef.current];
-        messageQueueRef.current = [];
+        const batch = [...messageQueueRef.current];
+        messageQueueRef.current = []; // Clear queue BEFORE processing
         
         setMessages(prev => {
-          const combined = [...prev, ...queuedMessages];
-          return combined.slice(-50); // Keep last 50 messages
+          // Mark which messages are in this batch for animation
+          const batchWithFlag = batch.map((msg, idx) => ({
+            ...msg,
+            isInCurrentBatch: true,
+            batchId: Date.now() // All messages in this batch share same ID
+          }));
+          const combined = [...prev, ...batchWithFlag];
+          return combined.slice(-50);
         });
       }
     }, 200);
@@ -557,12 +564,43 @@ export default function Overlay() {
             padding: '10px'
           }}
         >
-          {messages.map((msg, index) => (
-            <AnimatedMessage key={msg.id} animate={settings.animation === 'slide' && index === messages.length - 1}>
-              <div style={{ 
-                wordWrap: 'break-word',
-                marginBottom: '4px'
-              }}>
+          {(() => {
+            // ChatIS-style: Group messages by batch and animate entire batches together
+            const batches = [];
+            let currentBatch = [];
+            let currentBatchId = null;
+
+            messages.forEach((msg, index) => {
+              if (msg.isInCurrentBatch && msg.batchId !== currentBatchId) {
+                if (currentBatch.length > 0) {
+                  batches.push({ messages: currentBatch, animate: false });
+                }
+                currentBatch = [msg];
+                currentBatchId = msg.batchId;
+              } else if (msg.isInCurrentBatch && msg.batchId === currentBatchId) {
+                currentBatch.push(msg);
+              } else {
+                if (currentBatch.length > 0) {
+                  batches.push({ messages: currentBatch, animate: currentBatchId !== null });
+                  currentBatch = [];
+                  currentBatchId = null;
+                }
+                batches.push({ messages: [msg], animate: false });
+              }
+            });
+
+            if (currentBatch.length > 0) {
+              batches.push({ messages: currentBatch, animate: currentBatchId !== null && settings.animation === 'slide' });
+            }
+
+            return batches.map((batch, batchIdx) => (
+              <AnimatedMessage key={batch.messages[0].batchId || batch.messages[0].id} animate={batch.animate}>
+                <>
+                  {batch.messages.map((msg) => (
+                    <div key={msg.id} style={{ 
+                      wordWrap: 'break-word',
+                      marginBottom: '4px'
+                    }}>
                 {msg.badges?.length > 0 && (
                   <>
                     {msg.badges.map((badge, i) => (
@@ -615,10 +653,13 @@ export default function Overlay() {
                       <span key={i}>{part.content}</span>
                     )
                   )}
-                </span>
-              </div>
-            </AnimatedMessage>
-          ))}
+                    </span>
+                    </div>
+                  ))}
+                </>
+              </AnimatedMessage>
+            ));
+          })()}
         </div>
       </div>
     </>

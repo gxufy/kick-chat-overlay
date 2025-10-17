@@ -588,7 +588,12 @@ export default function Overlay() {
               <AnimatedMessage key={batch.messages[0].batchId || batch.messages[0].id} animate={batch.animate}>
                 <>
                   {batch.messages.map((msg) => (
-                    <div key={msg.id} style={{ marginBottom: '4px' }}>
+                    <div key={msg.id} style={{ 
+                      marginBottom: '4px',
+                      wordWrap: 'break-word',
+                      overflowWrap: 'break-word',
+                      whiteSpace: 'pre-wrap'
+                    }}>
                       <span style={{ display: 'inline-block' }}>
                         {msg.badges?.length > 0 && (
                           <>
@@ -616,27 +621,27 @@ export default function Overlay() {
                             <span>: </span>
                           </>
                         )}
-                        <span style={{ display: 'inline' }}>
-                          {msg.messageParts.map((part, i) => 
-                            part.type === 'emote' ? (
-                              <span 
-                                key={i}
-                                style={{ display: 'inline-block' }}
-                              >
-                                <img 
-                                  src={part.url}
-                                  alt={part.name}
-                                  style={{
-                                    height: `${currentSize.emoteHeight}px`,
-                                    verticalAlign: 'middle'
-                                  }}
-                                />
-                              </span>
-                            ) : (
-                              <span key={i}>{part.content}</span>
-                            )
-                          )}
-                        </span>
+                      </span>
+                      <span style={{ display: 'inline' }}>
+                        {msg.messageParts.map((part, i) => 
+                          part.type === 'emote' ? (
+                            <span 
+                              key={i}
+                              style={{ display: 'inline-block' }}
+                            >
+                              <img 
+                                src={part.url}
+                                alt={part.name}
+                                style={{
+                                  height: `${currentSize.emoteHeight}px`,
+                                  verticalAlign: 'middle'
+                                }}
+                              />
+                            </span>
+                          ) : (
+                            <span key={i}>{part.content}</span>
+                          )
+                        )}
                       </span>
                     </div>
                   ))}

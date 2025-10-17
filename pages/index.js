@@ -601,7 +601,8 @@ export default function Overlay() {
                                   height: `${badgeSize}px`,
                                   verticalAlign: 'middle',
                                   borderRadius: '10%',
-                                  marginRight: '4px'
+                                  marginRight: '4px',
+                                  display: 'inline-block'
                                 }}
                               />
                             ))}
@@ -615,7 +616,7 @@ export default function Overlay() {
                             <span>: </span>
                           </>
                         )}
-                        <span>
+                        <span style={{ display: 'inline' }}>
                           {msg.messageParts.map((part, i) => 
                             part.type === 'emote' ? (
                               <span 

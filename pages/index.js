@@ -45,12 +45,11 @@ function AnimatedMessage({ children, animate, direction = 'vertical' }) {
       if (direction === 'vertical') {
         target.style.height = '0px';
         target.style.marginBottom = '0px';
-        // KEY FIX: Don't hide overflow during animation
-        target.style.overflow = 'visible';
+        target.style.overflow = 'hidden';
       } else {
         target.style.width = '0px';
         target.style.height = `${targetHeight}px`;
-        target.style.overflow = 'visible';
+        target.style.overflow = 'hidden';
       }
 
       let start;
@@ -88,14 +87,7 @@ function AnimatedMessage({ children, animate, direction = 'vertical' }) {
     };
   }, [animate, direction, children]);
 
-  // KEY FIX: Measure element should have same constraints as actual container
-  const measureStyles = { 
-    visibility: 'hidden', 
-    position: 'absolute', 
-    pointerEvents: 'none',
-    width: '100%', // Match parent width
-    boxSizing: 'border-box'
-  };
+  const measureStyles = { visibility: 'hidden', position: 'absolute', pointerEvents: 'none' };
 
   return (
     <>
@@ -107,12 +99,7 @@ function AnimatedMessage({ children, animate, direction = 'vertical' }) {
           {children}
         </div>
       ) : (
-        <div ref={placeholderRef} style={{ width: '100%' }}>
-          {/* KEY FIX: Show content during animation, just in expanding container */}
-          <div style={{ visibility: animate ? 'visible' : 'hidden' }}>
-            {children}
-          </div>
-        </div>
+        <div ref={placeholderRef} />
       )}
     </>
   );
@@ -550,16 +537,23 @@ export default function Overlay() {
   return (
     <>
       <Head><title>Kick Chat Overlay - {settings.channel}</title></Head>
-      <div className="min-h-screen w-full">
+      <div style={{ 
+        margin: 0, 
+        overflow: 'hidden', 
+        height: '100vh', 
+        position: 'relative' 
+      }}>
         <div 
-          className="absolute bottom-0 left-0 w-full text-white"
           style={{
-            ...containerStyle,
-            width: '100%',
+            width: 'calc(100% - 20px)',
             padding: '10px',
-            boxSizing: 'border-box',
-            overflowWrap: 'break-word',
-            wordBreak: 'break-word'
+            position: 'absolute',
+            bottom: 0,
+            overflow: 'hidden',
+            backgroundColor: 'transparent',
+            color: 'white',
+            wordBreak: 'break-word',
+            ...containerStyle
           }}
         >
           {(() => {
@@ -594,65 +588,54 @@ export default function Overlay() {
               <AnimatedMessage key={batch.messages[0].batchId || batch.messages[0].id} animate={batch.animate}>
                 <>
                   {batch.messages.map((msg) => (
-                    <div key={msg.id} style={{ 
-                      wordWrap: 'break-word',
-                      overflowWrap: 'break-word',
-                      wordBreak: 'break-word',
-                      marginBottom: '4px',
-                      width: '100%'
-                    }}>
-                      {msg.badges?.length > 0 && (
-                        <>
-                          {msg.badges.map((badge, i) => (
-                            <img 
-                              key={i} 
-                              src={badge.url} 
-                              alt="badge"
-                              style={{
-                                height: `${badgeSize}px`,
-                                verticalAlign: 'middle',
-                                borderRadius: '10%',
-                                marginRight: '4px',
-                                display: 'inline-block'
-                              }}
-                            />
-                          ))}
-                        </>
-                      )}
-                      {!settings.hideNames && (
-                        <>
-                          <span style={{ color: msg.color }}>
-                            {msg.username}
-                          </span>
-                          <span>: </span>
-                        </>
-                      )}
-                      <span>
-                        {msg.messageParts.map((part, i) => 
-                          part.type === 'emote' ? (
-                            <span 
-                              key={i}
-                              style={{
-                                display: 'inline-block',
-                                verticalAlign: 'middle',
-                                lineHeight: 0,
-                                margin: '0 2px'
-                              }}
-                            >
+                    <div key={msg.id} style={{ marginBottom: '4px' }}>
+                      <span style={{ display: 'inline-block' }}>
+                        {msg.badges?.length > 0 && (
+                          <>
+                            {msg.badges.map((badge, i) => (
                               <img 
-                                src={part.url}
-                                alt={part.name}
+                                key={i} 
+                                src={badge.url} 
+                                alt="badge"
                                 style={{
-                                  height: `${currentSize.emoteHeight}px`,
-                                  display: 'inline-block',
-                                  verticalAlign: 'middle'
+                                  height: `${badgeSize}px`,
+                                  verticalAlign: 'middle',
+                                  borderRadius: '10%',
+                                  marginRight: '4px'
                                 }}
                               />
-                            </span>
-                          ) : (
-                            <span key={i}>{part.content}</span>
-                          )
+                            ))}
+                          </>
                         )}
+                        {!settings.hideNames && (
+                          <>
+                            <span style={{ color: msg.color }}>
+                              {msg.username}
+                            </span>
+                            <span>: </span>
+                          </>
+                        )}
+                        <span>
+                          {msg.messageParts.map((part, i) => 
+                            part.type === 'emote' ? (
+                              <span 
+                                key={i}
+                                style={{ display: 'inline-block' }}
+                              >
+                                <img 
+                                  src={part.url}
+                                  alt={part.name}
+                                  style={{
+                                    height: `${currentSize.emoteHeight}px`,
+                                    verticalAlign: 'middle'
+                                  }}
+                                />
+                              </span>
+                            ) : (
+                              <span key={i}>{part.content}</span>
+                            )
+                          )}
+                        </span>
                       </span>
                     </div>
                   ))}

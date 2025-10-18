@@ -497,9 +497,9 @@ export default function Overlay() {
   }, [settings.channel]);
 
   const sizeMap = {
-    1: { emoteHeight: 25 },
-    2: { emoteHeight: 42 },
-    3: { emoteHeight: 60 }
+    1: { emoteHeight: 25, fontSize: 32, lineHeight: 1.5 },
+    2: { emoteHeight: 42, fontSize: 40, lineHeight: 1.5 },
+    3: { emoteHeight: 60, fontSize: 48, lineHeight: 1.5 }
   };
 
   const fontMap = {
@@ -536,17 +536,18 @@ export default function Overlay() {
     return shadows[size];
   };
 
+  const currentSize = sizeMap[settings.size] || sizeMap[3];
+  
   const containerStyle = {
     fontFamily: settings.fontCustom || fontMap[settings.font] || fontMap[0],
-    fontSize: '48px',
-    lineHeight: '1.5',
+    fontSize: `${currentSize.fontSize}px`,
+    lineHeight: `${currentSize.lineHeight}`,
     fontWeight: 800,
     ...getStrokeStyle(settings.stroke),
     ...(settings.shadow && { filter: getShadowStyle(settings.shadow) }),
     ...(settings.smallCaps && { fontVariant: 'small-caps' })
   };
 
-  const currentSize = sizeMap[settings.size] || sizeMap[3];
   const badgeSize = currentSize.emoteHeight * 0.75;
 
   return (
@@ -631,30 +632,22 @@ export default function Overlay() {
                 <span>
                   {msg.messageParts.map((part, i) => 
                     part.type === 'emote' ? (
-                      <span 
+                      <img 
                         key={i}
+                        src={part.url}
+                        alt={part.name}
                         style={{
+                          height: `${currentSize.emoteHeight}px`,
                           display: 'inline-block',
                           verticalAlign: 'middle',
-                          lineHeight: 0,
                           margin: '0 2px'
                         }}
-                      >
-                        <img 
-                          src={part.url}
-                          alt={part.name}
-                          style={{
-                            height: `${currentSize.emoteHeight}px`,
-                            display: 'inline-block',
-                            verticalAlign: 'middle'
-                          }}
-                        />
-                      </span>
+                      />
                     ) : (
                       <span key={i}>{part.content}</span>
                     )
                   )}
-                    </span>
+                </span>
                     </div>
                   ))}
                 </>

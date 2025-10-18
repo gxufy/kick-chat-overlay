@@ -649,6 +649,7 @@ export default function Overlay() {
           vertical-align: middle;
           border-radius: 10%;
           margin-right: 4px;
+          display: inline-block;
         }
         .nick {
           /* color set via inline style */

@@ -84,11 +84,17 @@ function AnimatedMessage({ children, animate, direction = 'vertical' }) {
     };
   }, [animate, direction, children]);
 
-  const measureStyles = { visibility: 'hidden', position: 'absolute', pointerEvents: 'none' };
+  // ChatIS uses a hidden div for measurement
+  const measureStyles = { 
+    visibility: 'hidden', 
+    position: 'absolute', 
+    pointerEvents: 'none',
+    display: 'none'
+  };
 
   return (
     <>
-      <div ref={measureRef} style={measureStyles}>
+      <div ref={measureRef} style={measureStyles} className="hidden">
         {children}
       </div>
       {showContent ? (
@@ -641,6 +647,7 @@ export default function Overlay() {
       <style jsx>{`
         .chat_line {
           word-break: break-word;
+          margin-bottom: 4px;
         }
         .user_info {
           display: inline-block;

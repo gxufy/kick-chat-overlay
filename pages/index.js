@@ -35,7 +35,6 @@ function AnimatedMessage({ children, animate, direction = 'vertical' }) {
       
       const targetHeight = measure.offsetHeight;
       const targetWidth = measure.offsetWidth;
-      const marginBottom = 4;
 
       if (targetHeight === 0 && targetWidth === 0) {
         setShowContent(true);
@@ -44,7 +43,6 @@ function AnimatedMessage({ children, animate, direction = 'vertical' }) {
 
       if (direction === 'vertical') {
         target.style.height = '0px';
-        target.style.marginBottom = '0px';
         target.style.overflow = 'hidden';
       } else {
         target.style.width = '0px';
@@ -65,7 +63,6 @@ function AnimatedMessage({ children, animate, direction = 'vertical' }) {
         
         if (direction === 'vertical') {
           target.style.height = `${Math.round(targetHeight * eased)}px`;
-          target.style.marginBottom = `${Math.round(marginBottom * eased)}px`;
         } else {
           target.style.width = `${Math.round(targetWidth * eased)}px`;
         }
@@ -95,9 +92,7 @@ function AnimatedMessage({ children, animate, direction = 'vertical' }) {
         {children}
       </div>
       {showContent ? (
-        <div style={{ marginBottom: '4px' }}>
-          {children}
-        </div>
+        children
       ) : (
         <div ref={placeholderRef} />
       )}
@@ -588,13 +583,8 @@ export default function Overlay() {
               <AnimatedMessage key={batch.messages[0].batchId || batch.messages[0].id} animate={batch.animate}>
                 <>
                   {batch.messages.map((msg) => (
-                    <div key={msg.id} style={{ 
-                      marginBottom: '4px',
-                      wordWrap: 'break-word',
-                      overflowWrap: 'break-word',
-                      whiteSpace: 'pre-wrap'
-                    }}>
-                      <span style={{ display: 'inline-block' }}>
+                    <div key={msg.id} className="chat_line">
+                      <span className="user_info">
                         {msg.badges?.length > 0 && (
                           <>
                             {msg.badges.map((badge, i) => (
@@ -602,12 +592,9 @@ export default function Overlay() {
                                 key={i} 
                                 src={badge.url} 
                                 alt="badge"
+                                className="badge"
                                 style={{
-                                  height: `${badgeSize}px`,
-                                  verticalAlign: 'middle',
-                                  borderRadius: '10%',
-                                  marginRight: '4px',
-                                  display: 'inline-block'
+                                  height: `${badgeSize}px`
                                 }}
                               />
                             ))}
@@ -615,26 +602,26 @@ export default function Overlay() {
                         )}
                         {!settings.hideNames && (
                           <>
-                            <span style={{ color: msg.color }}>
+                            <span className="nick" style={{ color: msg.color }}>
                               {msg.username}
                             </span>
-                            <span>: </span>
+                            <span className="colon">:</span>
                           </>
                         )}
                       </span>
-                      <span style={{ display: 'inline' }}>
+                      <span className="message">
                         {msg.messageParts.map((part, i) => 
                           part.type === 'emote' ? (
                             <span 
                               key={i}
-                              style={{ display: 'inline-block' }}
+                              className="emote-container"
                             >
                               <img 
                                 src={part.url}
                                 alt={part.name}
+                                className="emote"
                                 style={{
-                                  height: `${currentSize.emoteHeight}px`,
-                                  verticalAlign: 'middle'
+                                  height: `${currentSize.emoteHeight}px`
                                 }}
                               />
                             </span>
@@ -651,6 +638,34 @@ export default function Overlay() {
           })()}
         </div>
       </div>
+      <style jsx>{`
+        .chat_line {
+          word-break: break-word;
+        }
+        .user_info {
+          display: inline-block;
+        }
+        .badge {
+          vertical-align: middle;
+          border-radius: 10%;
+          margin-right: 4px;
+        }
+        .nick {
+          /* color set via inline style */
+        }
+        .colon {
+          /* separator */
+        }
+        .message {
+          /* message content */
+        }
+        .emote {
+          vertical-align: middle;
+        }
+        .emote-container {
+          display: inline-block;
+        }
+      `}</style>
     </>
   );
 }

@@ -22,20 +22,24 @@ function AnimatedMessage({ children, animate, direction = 'vertical' }) {
       return;
     }
 
+    // Wait for next frame to ensure refs are ready and DOM is stable
     const setupRaf = requestAnimationFrame(() => {
       if (!isMountedRef.current || !placeholderRef.current || !measureRef.current) {
         setShowContent(true);
         return;
       }
 
+      // ChatIS-style: pre-measure, animate spacer with jQuery "swing" equivalent, then swap in content
       const target = placeholderRef.current;
       const measure = measureRef.current;
       
+      // Force layout recalculation for accurate measurement
       measure.offsetHeight;
       
       const targetHeight = measure.offsetHeight;
       const targetWidth = measure.offsetWidth;
 
+      // Ensure we have valid measurements
       if (targetHeight === 0 && targetWidth === 0) {
         setShowContent(true);
         return;
@@ -51,16 +55,16 @@ function AnimatedMessage({ children, animate, direction = 'vertical' }) {
       }
 
       let start;
-      const duration = 150;
-      const swing = (t) => 0.5 - Math.cos(Math.PI * t) / 2;
-      
+      const duration = 150; // ms
+      const swing = (t) => 0.5 - Math.cos(Math.PI * t) / 2; // jQuery "swing"
+
       const step = (ts) => {
         if (!isMountedRef.current) return;
-        
+
         if (start == null) start = ts;
         const t = Math.min(1, (ts - start) / duration);
         const eased = swing(t);
-        
+
         if (direction === 'vertical') {
           target.style.height = `${Math.round(targetHeight * eased)}px`;
         } else {
@@ -84,21 +88,17 @@ function AnimatedMessage({ children, animate, direction = 'vertical' }) {
     };
   }, [animate, direction, children]);
 
-  // ChatIS uses a hidden div for measurement
-  const measureStyles = { 
-    visibility: 'hidden', 
-    position: 'absolute', 
-    pointerEvents: 'none',
-    display: 'none'
-  };
+  const measureStyles = { visibility: 'hidden', position: 'absolute', pointerEvents: 'none' };
 
   return (
     <>
-      <div ref={measureRef} style={measureStyles} className="hidden">
+      <div ref={measureRef} style={measureStyles}>
         {children}
       </div>
       {showContent ? (
-        children
+        <div style={{ marginBottom: '0', lineHeight: '1.5' }}>
+          {children}
+        </div>
       ) : (
         <div ref={placeholderRef} />
       )}
@@ -169,6 +169,7 @@ export default function Overlay() {
     hideNames: false
   });
 
+  // ChatIS-style message queue: collect messages and process them every 200ms
   const messageQueueRef = useRef([]);
 
   useEffect(() => {
@@ -259,6 +260,7 @@ export default function Overlay() {
                       newEmoteMap[emote.name] = `https:${emote.data.host.url}/${webpFile.name}`;
                     }
                   });
+                  console.log('Loaded 7TV emotes via GraphQL search:', Object.keys(newEmoteMap).length);
                 }
               }
             }
@@ -291,6 +293,7 @@ export default function Overlay() {
                         newEmoteMap[emote.name] = `https:${emote.data.host.url}/${webpFile.name}`;
                       }
                     });
+                    console.log('Loaded 7TV emotes via Twitch ID:', Object.keys(newEmoteMap).length);
                   }
                 }
               }
@@ -316,6 +319,7 @@ export default function Overlay() {
                   }
                 }
               });
+              console.log('Loaded 7TV global emotes');
             }
           }
         } catch (e) {
@@ -333,6 +337,7 @@ export default function Overlay() {
                 newEmoteMap[emote.code] = `https://cdn.betterttv.net/emote/${emote.id}/3x`;
               }
             });
+            console.log('Loaded BTTV emotes');
           }
         } catch (e) {
           console.warn('BTTV fetch failed:', e);
@@ -347,6 +352,7 @@ export default function Overlay() {
                 newEmoteMap[emote.code] = `https://cdn.betterttv.net/emote/${emote.id}/3x`;
               }
             });
+            console.log('Loaded BTTV global emotes');
           }
         } catch (e) {
           console.warn('BTTV global fetch failed:', e);
@@ -364,11 +370,13 @@ export default function Overlay() {
                 if (url) newEmoteMap[emote.code] = url;
               }
             });
+            console.log('Loaded FFZ emotes');
           }
         } catch (e) {
           console.warn('FFZ fetch failed:', e);
         }
 
+        console.log('Total emotes loaded:', Object.keys(newEmoteMap).length);
         setEmoteMap(newEmoteMap);
         
       } catch (error) {
@@ -385,17 +393,20 @@ export default function Overlay() {
     emoteMapRef.current = emoteMap;
   }, [emoteMap]);
 
+  // ChatIS-style: Process message queue every 250ms
+  // Key: Batch ALL queued messages together and animate them as ONE block
   useEffect(() => {
     const interval = setInterval(() => {
       if (messageQueueRef.current.length > 0) {
         const batch = [...messageQueueRef.current];
-        messageQueueRef.current = [];
+        messageQueueRef.current = []; // Clear queue BEFORE processing
         
         setMessages(prev => {
+          // Mark which messages are in this batch for animation
           const batchWithFlag = batch.map((msg, idx) => ({
             ...msg,
             isInCurrentBatch: true,
-            batchId: Date.now()
+            batchId: Date.now() // All messages in this batch share same ID
           }));
           const combined = [...prev, ...batchWithFlag];
           return combined.slice(-50);
@@ -409,6 +420,7 @@ export default function Overlay() {
   useEffect(() => {
     if (!settings.channel) return;
 
+    // Clear messages when channel changes
     setMessages([]);
     
     let pusher = null;
@@ -461,6 +473,7 @@ export default function Overlay() {
             timestamp: Date.now()
           };
 
+          // ChatIS-style: Add to queue instead of directly to state
           messageQueueRef.current.push(newMessage);
         });
 
@@ -471,6 +484,7 @@ export default function Overlay() {
 
     connectToKick();
 
+    // Proper cleanup function
     return () => {
       if (channel) {
         channel.unbind_all();
@@ -525,7 +539,7 @@ export default function Overlay() {
   const containerStyle = {
     fontFamily: settings.fontCustom || fontMap[settings.font] || fontMap[0],
     fontSize: '48px',
-    lineHeight: '1.3',
+    lineHeight: '1.5',
     fontWeight: 800,
     ...getStrokeStyle(settings.stroke),
     ...(settings.shadow && { filter: getShadowStyle(settings.shadow) }),
@@ -538,26 +552,17 @@ export default function Overlay() {
   return (
     <>
       <Head><title>Kick Chat Overlay - {settings.channel}</title></Head>
-      <div style={{ 
-        margin: 0, 
-        overflow: 'hidden', 
-        height: '100vh', 
-        position: 'relative' 
-      }}>
+      <div className="min-h-screen w-full">
         <div 
+          className="absolute bottom-0 left-0 w-full overflow-hidden text-white"
           style={{
+            ...containerStyle,
             width: 'calc(100% - 20px)',
-            padding: '10px',
-            position: 'absolute',
-            bottom: 0,
-            overflow: 'hidden',
-            backgroundColor: 'transparent',
-            color: 'white',
-            wordBreak: 'break-word',
-            ...containerStyle
+            padding: '10px'
           }}
         >
           {(() => {
+            // ChatIS-style: Group messages by batch and animate entire batches together
             const batches = [];
             let currentBatch = [];
             let currentBatchId = null;
@@ -589,53 +594,67 @@ export default function Overlay() {
               <AnimatedMessage key={batch.messages[0].batchId || batch.messages[0].id} animate={batch.animate}>
                 <>
                   {batch.messages.map((msg) => (
-                    <div key={msg.id} className="chat_line">
-                      <span className="user_info">
-                        {msg.badges?.length > 0 && (
-                          <>
-                            {msg.badges.map((badge, i) => (
-                              <img 
-                                key={i} 
-                                src={badge.url} 
-                                alt="badge"
-                                className="badge"
-                                style={{
-                                  height: `${badgeSize}px`
-                                }}
-                              />
-                            ))}
-                          </>
-                        )}
-                        {!settings.hideNames && (
-                          <>
-                            <span className="nick" style={{ color: msg.color }}>
-                              {msg.username}
-                            </span>
-                            <span className="colon">:</span>
-                          </>
-                        )}
+                    <div key={msg.id} style={{
+                      wordWrap: 'break-word',
+                      lineHeight: '1.5',
+                      marginBottom: '0',
+                      paddingBottom: '0',
+                      display: 'block',
+                      minHeight: '1.5em'
+                    }}>
+                {msg.badges?.length > 0 && (
+                  <>
+                    {msg.badges.map((badge, i) => (
+                      <img 
+                        key={i} 
+                        src={badge.url} 
+                        alt="badge"
+                        style={{
+                          height: `${badgeSize}px`,
+                          verticalAlign: 'middle',
+                          borderRadius: '10%',
+                          marginRight: '4px',
+                          display: 'inline-block'
+                        }}
+                      />
+                    ))}
+                  </>
+                )}
+                {!settings.hideNames && (
+                  <>
+                    <span style={{ color: msg.color }}>
+                      {msg.username}
+                    </span>
+                    <span>: </span>
+                  </>
+                )}
+                <span>
+                  {msg.messageParts.map((part, i) => 
+                    part.type === 'emote' ? (
+                      <span 
+                        key={i}
+                        style={{
+                          display: 'inline-block',
+                          verticalAlign: 'middle',
+                          lineHeight: 0,
+                          margin: '0 2px'
+                        }}
+                      >
+                        <img 
+                          src={part.url}
+                          alt={part.name}
+                          style={{
+                            height: `${currentSize.emoteHeight}px`,
+                            display: 'inline-block',
+                            verticalAlign: 'middle'
+                          }}
+                        />
                       </span>
-                      <span className="message">
-                        {msg.messageParts.map((part, i) => 
-                          part.type === 'emote' ? (
-                            <span 
-                              key={i}
-                              className="emote-container"
-                            >
-                              <img 
-                                src={part.url}
-                                alt={part.name}
-                                className="emote"
-                                style={{
-                                  height: `${currentSize.emoteHeight}px`
-                                }}
-                              />
-                            </span>
-                          ) : (
-                            <span key={i}>{part.content}</span>
-                          )
-                        )}
-                      </span>
+                    ) : (
+                      <span key={i}>{part.content}</span>
+                    )
+                  )}
+                    </span>
                     </div>
                   ))}
                 </>
@@ -644,36 +663,6 @@ export default function Overlay() {
           })()}
         </div>
       </div>
-      <style jsx>{`
-        .chat_line {
-          word-break: break-word;
-          margin-bottom: 4px;
-        }
-        .user_info {
-          display: inline-block;
-        }
-        .badge {
-          vertical-align: middle;
-          border-radius: 10%;
-          margin-right: 4px;
-          display: inline-block;
-        }
-        .nick {
-          /* color set via inline style */
-        }
-        .colon {
-          /* separator */
-        }
-        .message {
-          /* message content */
-        }
-        .emote {
-          vertical-align: middle;
-        }
-        .emote-container {
-          display: inline-block;
-        }
-      `}</style>
     </>
   );
 }

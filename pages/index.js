@@ -448,7 +448,13 @@ export default function Overlay() {
                   
                   if (matchingBadges.length > 0 && matchingBadges[0].badge_image?.src) {
                     badgeElements.push({ url: matchingBadges[0].badge_image.src });
+                  } else {
+                    // Fallback to local subscriber badge if no custom badge found
+                    badgeElements.push({ url: '/badges/subscriber.svg' });
                   }
+                } else {
+                  // Fallback to local subscriber badge if channel has no custom sub badges
+                  badgeElements.push({ url: '/badges/subscriber.svg' });
                 }
               } else if (badge.type === 'sub_gifter') {
                 let gifterBadge = 'subGifter';
